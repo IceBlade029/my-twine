@@ -86,7 +86,12 @@ export interface VisualPassageContentV2 {
 	version: 2;
 }
 
-export type VisualBlock = VisualTextBlock | VisualChoiceBlock | VisualBranchBlock;
+export type VisualBlock =
+	| VisualTextBlock
+	| VisualChoiceBlock
+	| VisualVariableBlock
+	| VisualIncludeBlock
+	| VisualBranchBlock;
 
 export interface VisualTextBlock {
 	kind: 'text';
@@ -104,6 +109,22 @@ export interface VisualChoiceBlock {
 	actions: VisualStateAction[];
 }
 
+export interface VisualVariableBlock {
+	kind: 'variable';
+	id: string;
+	/** Story state whose value is printed. An empty value means the block is incomplete. */
+	stateId: string;
+	condition?: VisualCondition;
+}
+
+export interface VisualIncludeBlock {
+	kind: 'include';
+	id: string;
+	/** Target passage ID. An empty value means the block is incomplete. */
+	targetPassageId: string;
+	condition?: VisualCondition;
+}
+
 export interface VisualBranchBlock {
 	kind: 'branch';
 	id: string;
@@ -116,10 +137,11 @@ export interface VisualBranch {
 	blocks: VisualBlock[];
 }
 
-export type VisualStateType = 'boolean' | 'number' | 'text';
+export type VisualStateType = 'boolean' | 'number' | 'text' | 'list';
 
 export interface VisualStoryState {
-	defaultValue: boolean | number | string;
+	// List states store plain text items.
+	defaultValue: boolean | number | string | string[];
 	id: string;
 	name: string;
 	type: VisualStateType;
@@ -131,13 +153,19 @@ export interface VisualStoryContentV1 {
 }
 
 export interface VisualCondition {
-	operator: 'equals' | 'notEquals' | 'greaterThan' | 'lessThan';
+	operator:
+		| 'equals'
+		| 'notEquals'
+		| 'greaterThan'
+		| 'lessThan'
+		| 'includes'
+		| 'notIncludes';
 	stateId: string;
 	value: boolean | number | string;
 }
 
 export interface VisualStateAction {
-	operation: 'set' | 'increase' | 'decrease';
+	operation: 'set' | 'increase' | 'decrease' | 'push' | 'remove' | 'clear';
 	stateId: string;
 	value: boolean | number | string;
 }

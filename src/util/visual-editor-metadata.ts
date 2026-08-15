@@ -5,8 +5,10 @@ import {
 	VisualBranchBlock,
 	VisualChoiceBlock,
 	VisualCondition,
+	VisualIncludeBlock,
 	VisualStoryContentV1,
-	VisualTextBlock
+	VisualTextBlock,
+	VisualVariableBlock
 } from '../store/stories';
 import {
 	compileVisualPassage,
@@ -18,6 +20,11 @@ export const visualEditorMetadataSelector =
 
 interface SerializedChoiceBlock
 	extends Omit<VisualChoiceBlock, 'targetPassageId'> {
+	targetPassageName: string;
+}
+
+interface SerializedIncludeBlock
+	extends Omit<VisualIncludeBlock, 'targetPassageId'> {
 	targetPassageName: string;
 }
 
@@ -33,6 +40,8 @@ interface SerializedBranch extends Omit<VisualBranch, 'blocks'> {
 type SerializedBlock =
 	| VisualTextBlock
 	| SerializedChoiceBlock
+	| VisualVariableBlock
+	| SerializedIncludeBlock
 	| SerializedBranchBlock;
 
 interface SerializedPassageV1 {
@@ -67,6 +76,17 @@ function serializeBlockList(
 ): SerializedBlock[] {
 	return blocks.map(block => {
 		if (block.kind === 'choice') {
+			const {targetPassageId, ...saved} = block;
+
+			return {
+				...saved,
+				targetPassageName:
+					story.passages.find(target => target.id === targetPassageId)
+						?.name ?? ''
+			};
+		}
+
+		if (block.kind === 'include') {
 			const {targetPassageId, ...saved} = block;
 
 			return {
@@ -157,6 +177,17 @@ function restoreBlockList(
 			return {
 				...restored,
 				actions: block.actions ?? [],
+				targetPassageId:
+					story.passages.find(target => target.name === targetPassageName)
+						?.id ?? ''
+			};
+		}
+
+		if (block.kind === 'include') {
+			const {targetPassageName, ...restored} = block;
+
+			return {
+				...restored,
 				targetPassageId:
 					story.passages.find(target => target.name === targetPassageName)
 						?.id ?? ''

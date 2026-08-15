@@ -115,6 +115,74 @@ describe('<PassageVisualEditor>', () => {
 		).toHaveTextContent('[[Leave->Hallway]]');
 	});
 
+	it('adds and completes a variable block with a state picker', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+		});
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addVariableBlock')
+		);
+
+		// The fresh block is visibly incomplete until a state is chosen.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockIncomplete')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindVariable')
+		).toBeInTheDocument();
+
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.variableState'),
+			{target: {value: 'state-1'}}
+		);
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('<<print $nrp_state_1>>');
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
+		).not.toBeInTheDocument();
+	});
+
+	it('adds and completes an include block with a passage picker', () => {
+		const {story} = renderComponent();
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addIncludeBlock')
+		);
+
+		// The fresh block is visibly incomplete until a passage is chosen.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockIncomplete')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindInclude')
+		).toBeInTheDocument();
+
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.includeTarget'),
+			{target: {value: story.passages[1].id}}
+		);
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('<<include "Hallway">>');
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
+		).not.toBeInTheDocument();
+	});
+
 	it('no longer manages story states and hints at the story states dialog when there are none', () => {
 		renderComponent();
 
@@ -309,6 +377,145 @@ describe('human-readable conditions and actions', () => {
 			evaluateCondition({operator: 'equals', stateId: 'gone', value: 1}, undefined, 1)
 		).toBe(true);
 	});
+
+	it('evaluates list conditions against simulated array values', () => {
+		const inv: VisualStoryState = {
+			defaultValue: [],
+			id: 'inv',
+			name: 'Inventory',
+			type: 'list'
+		};
+
+		expect(
+			evaluateCondition(
+				{operator: 'includes', stateId: 'inv', value: 'key'},
+				inv,
+				['key', 'torch']
+			)
+		).toBe(true);
+		expect(
+			evaluateCondition(
+				{operator: 'includes', stateId: 'inv', value: 'map'},
+				inv,
+				['key', 'torch']
+			)
+		).toBe(false);
+		expect(
+			evaluateCondition(
+				{operator: 'notIncludes', stateId: 'inv', value: 'map'},
+				inv,
+				['key', 'torch']
+			)
+		).toBe(true);
+		expect(
+			evaluateCondition(
+				{operator: 'notIncludes', stateId: 'inv', value: 'key'},
+				inv,
+				['key', 'torch']
+			)
+		).toBe(false);
+		// A non-array simulated value never hides a list condition.
+		expect(
+			evaluateCondition(
+				{operator: 'includes', stateId: 'inv', value: 'key'},
+				inv,
+				'key'
+			)
+		).toBe(true);
+	});
+
+	it('offers list operators in the condition editor for list states', () => {
+		renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: ['key'],
+						id: 'state-1',
+						name: 'Inventory',
+						type: 'list'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: {
+							operator: 'equals',
+							stateId: 'state-1',
+							value: 'key'
+						},
+						id: 'text-1',
+						kind: 'text',
+						text: 'Hello.'
+					}
+				],
+				version: 2
+			};
+		});
+
+		const select = screen.getByLabelText(
+			'dialogs.passageEdit.visual.conditionOperator'
+		);
+
+		expect(select).toHaveTextContent(
+			'dialogs.passageEdit.visual.operatorIncludes'
+		);
+		expect(select).toHaveTextContent(
+			'dialogs.passageEdit.visual.operatorNotIncludes'
+		);
+		// Numeric-only operators are hidden for list states.
+		expect(select).not.toHaveTextContent('>');
+		expect(select).not.toHaveTextContent('<');
+	});
+
+	it('offers list operations in the action editor for list states', () => {
+		renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: ['key'],
+						id: 'state-1',
+						name: 'Inventory',
+						type: 'list'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						actions: [
+							{operation: 'set', stateId: 'state-1', value: 'key'}
+						],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Take',
+						targetPassageId: story.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+
+		const select = screen.getByLabelText(
+			'dialogs.passageEdit.visual.actionOperation'
+		);
+
+		expect(select).toHaveTextContent(
+			'dialogs.passageEdit.visual.operationPush'
+		);
+		expect(select).toHaveTextContent(
+			'dialogs.passageEdit.visual.operationRemove'
+		);
+		expect(select).toHaveTextContent(
+			'dialogs.passageEdit.visual.operationClear'
+		);
+		// Numeric-only operations are hidden for list states.
+		expect(select).not.toHaveTextContent(
+			'dialogs.passageEdit.visual.operationIncrease'
+		);
+	});
 });
 
 describe('simulator', () => {
@@ -408,6 +615,59 @@ describe('simulator', () => {
 		expect(branches()[0]).not.toHaveClass('is-inactive');
 		expect(branches()[1]).toHaveClass('is-inactive');
 		expect(screen.getByText('dialogs.passageEdit.visual.hidden')).toBeInTheDocument();
+	});
+
+	it('simulates list state values from comma-separated input', () => {
+		const {container} = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: ['key'],
+						id: 'state-1',
+						name: 'Inventory',
+						type: 'list'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: {
+							operator: 'includes',
+							stateId: 'state-1',
+							value: 'map'
+						},
+						id: 'text-1',
+						kind: 'text',
+						text: 'You have a map.'
+					}
+				],
+				version: 2
+			};
+		});
+		const body = () => container.querySelector('.visual-block-body');
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.simulatorToggle')
+		);
+
+		// The default (['key']) does not include 'map': the block is hidden.
+		expect(body()).toHaveClass('is-hidden');
+
+		// Typing comma-separated items restores the block.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.simulatorValue'),
+			{target: {value: 'map, torch'}}
+		);
+		expect(body()).not.toHaveClass('is-hidden');
+
+		// Clearing the input hides it again.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.simulatorValue'),
+			{target: {value: ''}}
+		);
+		expect(body()).toHaveClass('is-hidden');
 	});
 });
 

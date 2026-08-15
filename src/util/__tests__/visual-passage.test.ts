@@ -144,6 +144,117 @@ describe('visual passage utilities', () => {
 		).not.toContain('<<if ndef $nrp_trust>>');
 	});
 
+	it('compiles variable and include blocks', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Intro';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{id: 'var-1', kind: 'variable', stateId: state.id},
+						{
+							id: 'inc-1',
+							kind: 'include',
+							targetPassageId: story.passages[1].id
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('<<print $nrp_trust>>\n\n<<include "Intro">>');
+	});
+
+	it('skips variable and include blocks with missing references', () => {
+		const story = fakeStory(2);
+
+		story.visual = {states: [], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Intro';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{id: 'var-1', kind: 'variable', stateId: 'gone'},
+						{id: 'var-2', kind: 'variable', stateId: ''},
+						{
+							id: 'inc-1',
+							kind: 'include',
+							targetPassageId: ''
+						},
+						{
+							id: 'inc-2',
+							kind: 'include',
+							targetPassageId: 'missing-id'
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('');
+	});
+
+	it('wraps variable and include blocks in their conditions', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[1].name = 'Intro';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							condition: {
+								operator: 'greaterThan',
+								stateId: state.id,
+								value: 5
+							},
+							id: 'var-1',
+							kind: 'variable',
+							stateId: state.id
+						},
+						{
+							condition: {
+								operator: 'equals',
+								stateId: state.id,
+								value: 1
+							},
+							id: 'inc-1',
+							kind: 'include',
+							targetPassageId: story.passages[1].id
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe(
+			'<<if $nrp_trust gt 5>><<print $nrp_trust>><</if>>\n\n<<if $nrp_trust is 1>><<include "Intro">><</if>>'
+		);
+	});
+
 	it('compiles nested branches with conditions and an else branch', () => {
 		const story = fakeStory(3);
 		const state = {
@@ -199,6 +310,68 @@ describe('visual passage utilities', () => {
 			)
 		).toBe(
 			'<<if $nrp_s is 1>>[[Go to A->Ending A]]<<else>>Fallback text.<</if>>'
+		);
+	});
+
+	it('compiles list initialization, list actions, and list conditions', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: ['a', 'b'],
+			id: 'inv',
+			name: 'Inventory',
+			type: 'list' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[1].name = 'Next';
+		const content: VisualPassageContentV2 = {
+			blocks: [
+				{
+					condition: {operator: 'includes', stateId: state.id, value: 'key'},
+					id: 'text-1',
+					kind: 'text',
+					text: 'You have a key.'
+				},
+				{
+					condition: {
+						operator: 'notIncludes',
+						stateId: state.id,
+						value: 'key'
+					},
+					id: 'text-2',
+					kind: 'text',
+					text: 'No key.'
+				},
+				{
+					actions: [
+						{operation: 'push', stateId: state.id, value: 'key'},
+						{operation: 'remove', stateId: state.id, value: 'key'},
+						{operation: 'clear', stateId: state.id, value: 'key'}
+					],
+					id: 'choice-1',
+					kind: 'choice',
+					label: 'Continue',
+					targetPassageId: story.passages[1].id
+				}
+			],
+			version: 2
+		};
+		story.passages[0].visual = content;
+		const source = compileVisualPassage(content, story, story.passages[0].id);
+
+		// The list default initializes as a SugarCube array literal.
+		expect(source).toContain(
+			'<<if ndef $nrp_inv>><<set $nrp_inv = ["a","b"]>><</if>>'
+		);
+		expect(source).toContain(
+			'<<if $nrp_inv.includes("key")>>You have a key.<</if>>'
+		);
+		expect(source).toContain(
+			'<<if !$nrp_inv.includes("key")>>No key.<</if>>'
+		);
+		// List actions inside a choice setter, in order.
+		expect(source).toContain(
+			'[[Continue->Next][$nrp_inv.push("key"); $nrp_inv.delete("key"); $nrp_inv = []]]'
 		);
 	});
 

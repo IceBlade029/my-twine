@@ -19,11 +19,13 @@ import {
 	VisualBranchBlock,
 	VisualChoiceBlock,
 	VisualCondition,
+	VisualIncludeBlock,
 	VisualPassageContent,
 	VisualPassageContentV2,
 	VisualStateAction,
 	VisualStoryState,
 	VisualTextBlock,
+	VisualVariableBlock,
 	updatePassage
 } from '../../store/stories';
 import {useUndoableStoriesContext} from '../../store/undoable-stories';
@@ -34,16 +36,21 @@ import {
 import {defaultValueForState, StateValueInput} from '../story-states';
 import './passage-visual-editor.css';
 
+/** A value a state can hold during simulation; list states hold string[]. */
+type SimulatedValue = boolean | number | string | string[];
+
 /**
  * Evaluates a condition against a simulated state value. A condition whose
  * state no longer exists evaluates to true so it never hides a block.
  * greaterThan/lessThan are only meaningful for numeric values; non-numeric
- * inputs are coerced with Number().
+ * inputs are coerced with Number(). includes/notIncludes only apply to
+ * arrays; a non-array simulated value evaluates to true so it never hides a
+ * block.
  */
 export function evaluateCondition(
 	condition: VisualCondition,
 	state: VisualStoryState | undefined,
-	simulatedValue: boolean | number | string
+	simulatedValue: SimulatedValue
 ): boolean {
 	if (!state) {
 		return true;
@@ -58,10 +65,31 @@ export function evaluateCondition(
 			return Number(simulatedValue) > Number(condition.value);
 		case 'lessThan':
 			return Number(simulatedValue) < Number(condition.value);
+		case 'includes': {
+			const items = Array.isArray(simulatedValue) ? simulatedValue : undefined;
+
+			return !items || items.includes(String(condition.value));
+		}
+		case 'notIncludes': {
+			const items = Array.isArray(simulatedValue) ? simulatedValue : undefined;
+
+			return !items || !items.includes(String(condition.value));
+		}
 	}
 }
 
-function conditionOperatorSymbol(operator: VisualCondition['operator']) {
+function conditionOperatorSymbol(
+	operator: VisualCondition['operator'],
+	t: TFunction
+) {
+	if (operator === 'includes') {
+		return t('dialogs.passageEdit.visual.operatorIncludes');
+	}
+
+	if (operator === 'notIncludes') {
+		return t('dialogs.passageEdit.visual.operatorNotIncludes');
+	}
+
 	const symbols = {
 		equals: '=',
 		notEquals: '≠',
@@ -84,7 +112,7 @@ function conditionInterpolation(
 	const state = states.find(item => item.id === condition.stateId);
 
 	return {
-		operator: conditionOperatorSymbol(condition.operator),
+		operator: conditionOperatorSymbol(condition.operator, t),
 		state: state?.name ?? '?',
 		value: conditionValueText(condition.value)
 	};
@@ -119,12 +147,30 @@ function actionOperationWord(
 	operation: VisualStateAction['operation']
 ) {
 	const keys = {
+		clear: 'dialogs.passageEdit.visual.operationClear',
 		decrease: 'dialogs.passageEdit.visual.operationDecrease',
 		increase: 'dialogs.passageEdit.visual.operationIncrease',
+		push: 'dialogs.passageEdit.visual.operationPush',
+		remove: 'dialogs.passageEdit.visual.operationRemove',
 		set: 'dialogs.passageEdit.visual.set'
 	} as const;
 
 	return t(keys[operation]);
+}
+
+/**
+ * The starting value for a condition or action on a state. List states store
+ * single text items in conditions and actions, so the empty list default of a
+ * list state is replaced with an empty string.
+ */
+function stateValuePlaceholder(
+	state?: VisualStoryState
+): boolean | number | string {
+	// Only list states hold array defaults, so the non-list branch is a
+	// scalar; the cast reflects that invariant.
+	return state?.type === 'list'
+		? ''
+		: (defaultValueForState(state) as boolean | number | string);
 }
 
 /** Human-readable sentence for a choice action, e.g. 'After choosing: Trust set to 3'. */
@@ -151,7 +197,7 @@ export function actionSentenceText(
 function activeBranchIndex(
 	branches: VisualBranch[],
 	states: VisualStoryState[],
-	simulated?: Record<string, boolean | number | string>
+	simulated?: Record<string, SimulatedValue>
 ) {
 	if (!simulated) {
 		return undefined;
@@ -181,7 +227,7 @@ function activeBranchIndex(
 function blockIsHidden(
 	condition: VisualCondition | undefined,
 	states: VisualStoryState[],
-	simulated?: Record<string, boolean | number | string>
+	simulated?: Record<string, SimulatedValue>
 ) {
 	if (!simulated || !condition) {
 		return false;
@@ -297,7 +343,7 @@ function ConditionEditor(props: {
 						onChange({
 							operator: 'equals',
 							stateId: state.id,
-							value: defaultValueForState(state)
+							value: stateValuePlaceholder(state)
 						});
 					}}
 					type="button"
@@ -327,7 +373,7 @@ function ConditionEditor(props: {
 						onChange({
 							...condition,
 							stateId: event.target.value,
-							value: defaultValueForState(nextState)
+							value: stateValuePlaceholder(nextState)
 						});
 					}}
 					value={condition.stateId}
@@ -353,6 +399,16 @@ function ConditionEditor(props: {
 					)}
 					{state?.type === 'number' && (
 						<option value="lessThan">&lt;</option>
+					)}
+					{state?.type === 'list' && (
+						<option value="includes">
+							{t('dialogs.passageEdit.visual.operatorIncludes')}
+						</option>
+					)}
+					{state?.type === 'list' && (
+						<option value="notIncludes">
+							{t('dialogs.passageEdit.visual.operatorNotIncludes')}
+						</option>
 					)}
 				</select>
 				<StateValueInput
@@ -508,7 +564,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 										...action,
 										stateId: event.target.value,
 										operation: 'set',
-										value: defaultValueForState(nextState)
+										value: stateValuePlaceholder(nextState)
 									};
 									onUpdate({actions});
 								}}
@@ -542,6 +598,21 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 								{state?.type === 'number' && (
 									<option value="decrease">
 										{t('dialogs.passageEdit.visual.operationDecrease')}
+									</option>
+								)}
+								{state?.type === 'list' && (
+									<option value="push">
+										{t('dialogs.passageEdit.visual.operationPush')}
+									</option>
+								)}
+								{state?.type === 'list' && (
+									<option value="remove">
+										{t('dialogs.passageEdit.visual.operationRemove')}
+									</option>
+								)}
+								{state?.type === 'list' && (
+									<option value="clear">
+										{t('dialogs.passageEdit.visual.operationClear')}
 									</option>
 								)}
 							</select>
@@ -578,7 +649,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 								{
 									stateId: state.id,
 									operation: 'set',
-									value: defaultValueForState(state)
+									value: stateValuePlaceholder(state)
 								}
 							]
 						});
@@ -604,13 +675,108 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 	);
 };
 
+interface VariableEditorProps {
+	block: VisualVariableBlock;
+	disabled?: boolean;
+	onUpdate: (props: Partial<VisualVariableBlock>) => void;
+	states: VisualStoryState[];
+}
+
+const VariableEditor: React.FC<VariableEditorProps> = props => {
+	const {block, disabled, onUpdate, states} = props;
+	const {t} = useTranslation();
+
+	return (
+		<div className="visual-passage-variable">
+			<label>
+				<span>{t('dialogs.passageEdit.visual.variableState')}</span>
+				<select
+					disabled={disabled}
+					onChange={event => onUpdate({stateId: event.target.value})}
+					value={block.stateId}
+				>
+					<option value="">
+						{t('dialogs.passageEdit.visual.chooseState')}
+					</option>
+					{states.map(item => (
+						<option key={item.id} value={item.id}>{item.name}</option>
+					))}
+				</select>
+			</label>
+			{block.stateId === '' && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.blockIncomplete')}
+				</p>
+			)}
+			<div>
+				<span>{t('dialogs.passageEdit.visual.condition')}</span>
+				<ConditionEditor
+					condition={block.condition}
+					onChange={condition => onUpdate({condition})}
+					states={states}
+				/>
+			</div>
+		</div>
+	);
+};
+
+interface IncludeEditorProps {
+	block: VisualIncludeBlock;
+	disabled?: boolean;
+	onUpdate: (props: Partial<VisualIncludeBlock>) => void;
+	states: VisualStoryState[];
+	story: Story;
+}
+
+const IncludeEditor: React.FC<IncludeEditorProps> = props => {
+	const {block, disabled, onUpdate, states, story} = props;
+	const {t} = useTranslation();
+
+	return (
+		<div className="visual-passage-include">
+			<label>
+				<span>{t('dialogs.passageEdit.visual.includeTarget')}</span>
+				<select
+					disabled={disabled}
+					onChange={event =>
+						onUpdate({targetPassageId: event.target.value})
+					}
+					value={block.targetPassageId}
+				>
+					<option value="">
+						{t('dialogs.passageEdit.visual.chooseIncludeTarget')}
+					</option>
+					{story.passages.map(target => (
+						<option key={target.id} value={target.id}>
+							{target.name}
+						</option>
+					))}
+				</select>
+			</label>
+			{block.targetPassageId === '' && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.blockIncomplete')}
+				</p>
+			)}
+			<div>
+				<span>{t('dialogs.passageEdit.visual.condition')}</span>
+				<ConditionEditor
+					condition={block.condition}
+					onChange={condition => onUpdate({condition})}
+					states={states}
+				/>
+			</div>
+		</div>
+	);
+};
+
 interface BranchEditorProps {
 	branch: VisualBranchBlock;
 	disabled?: boolean;
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualBranchBlock>) => void;
-	simulated?: Record<string, boolean | number | string>;
+	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
 }
@@ -759,7 +925,7 @@ interface BlockListProps {
 	onChange: (blocks: VisualBlock[]) => void;
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
-	simulated?: Record<string, boolean | number | string>;
+	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
 }
@@ -829,6 +995,17 @@ const BlockList: React.FC<BlockListProps> = props => {
 		]);
 	}
 
+	function addVariableBlock() {
+		onChange([...blocks, {id: uuid(), kind: 'variable', stateId: ''}]);
+	}
+
+	function addIncludeBlock() {
+		onChange([
+			...blocks,
+			{id: uuid(), kind: 'include', targetPassageId: ''}
+		]);
+	}
+
 	function blockKindLabel(block: VisualBlock) {
 		if (block.kind === 'text') {
 			return t('dialogs.passageEdit.visual.blockKindText');
@@ -836,6 +1013,14 @@ const BlockList: React.FC<BlockListProps> = props => {
 
 		if (block.kind === 'choice') {
 			return t('dialogs.passageEdit.visual.blockKindChoice');
+		}
+
+		if (block.kind === 'variable') {
+			return t('dialogs.passageEdit.visual.blockKindVariable');
+		}
+
+		if (block.kind === 'include') {
+			return t('dialogs.passageEdit.visual.blockKindInclude');
 		}
 
 		return t('dialogs.passageEdit.visual.blockKindBranch');
@@ -936,6 +1121,27 @@ const BlockList: React.FC<BlockListProps> = props => {
 									story={story}
 								/>
 							)}
+							{block.kind === 'variable' && (
+								<VariableEditor
+									block={block}
+									disabled={disabled}
+									onUpdate={props =>
+										updateBlock(block.id, {...block, ...props})
+									}
+									states={states}
+								/>
+							)}
+							{block.kind === 'include' && (
+								<IncludeEditor
+									block={block}
+									disabled={disabled}
+									onUpdate={props =>
+										updateBlock(block.id, {...block, ...props})
+									}
+									states={states}
+									story={story}
+								/>
+							)}
 						</div>
 					</div>
 				);
@@ -962,6 +1168,20 @@ const BlockList: React.FC<BlockListProps> = props => {
 					onClick={addBranchBlock}
 					variant="create"
 				/>
+				<IconButton
+					disabled={disabled}
+					icon={<IconPlus />}
+					label={t('dialogs.passageEdit.visual.addVariableBlock')}
+					onClick={addVariableBlock}
+					variant="create"
+				/>
+				<IconButton
+					disabled={disabled}
+					icon={<IconPlus />}
+					label={t('dialogs.passageEdit.visual.addIncludeBlock')}
+					onClick={addIncludeBlock}
+					variant="create"
+				/>
 			</div>
 		</div>
 	);
@@ -980,7 +1200,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 	const [pendingSaves, setPendingSaves] = React.useState(0);
 	const [showSource, setShowSource] = React.useState(false);
 	const [simulatedValues, setSimulatedValues] = React.useState<
-		Record<string, boolean | number | string>
+		Record<string, SimulatedValue>
 	>({});
 	const [simulatorOpen, setSimulatorOpen] = React.useState(false);
 	const content = React.useMemo(
@@ -995,7 +1215,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 		.join('\u0000');
 
 	React.useEffect(() => {
-		const next: Record<string, boolean | number | string> = {};
+		const next: Record<string, SimulatedValue> = {};
 
 		states.forEach(state => {
 			next[state.id] = state.defaultValue;
@@ -1113,27 +1333,60 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 						) : (
 							<>
 								<h4>{t('dialogs.passageEdit.visual.simulator')}</h4>
-								{states.map(state => (
-									<div className="simulator-row" key={state.id}>
-										<span className="simulator-state-name">
-											{state.name}
-										</span>
-										<StateValueInput
-											label={t(
-												'dialogs.passageEdit.visual.simulatorValue',
-												{name: state.name}
+								{states.map(state => {
+									const value =
+										simulatedValues[state.id] ?? state.defaultValue;
+
+									return (
+										<div className="simulator-row" key={state.id}>
+											<span className="simulator-state-name">
+												{state.name}
+											</span>
+											{state.type === 'list' ? (
+												<input
+													aria-label={t(
+														'dialogs.passageEdit.visual.simulatorValue',
+														{name: state.name}
+													)}
+													onChange={event => {
+														const raw = event.target.value;
+														const items =
+															raw === ''
+																? []
+																: raw
+																		.split(',')
+																		.map(item => item.trim())
+																		.filter(item => item !== '');
+														setSimulatedValues(prev => ({
+															...prev,
+															[state.id]: items
+														}));
+													}}
+													value={
+														Array.isArray(value)
+															? value.join(', ')
+															: ''
+													}
+												/>
+											) : (
+												<StateValueInput
+													label={t(
+														'dialogs.passageEdit.visual.simulatorValue',
+														{name: state.name}
+													)}
+													onChange={value =>
+														setSimulatedValues(prev => ({
+															...prev,
+															[state.id]: value
+														}))
+													}
+													state={state}
+													value={value as boolean | number | string}
+												/>
 											)}
-											onChange={value =>
-												setSimulatedValues(prev => ({
-													...prev,
-													[state.id]: value
-												}))
-											}
-											state={state}
-											value={simulatedValues[state.id] ?? state.defaultValue}
-										/>
-									</div>
-								))}
+										</div>
+									);
+								})}
 							</>
 						)}
 					</div>

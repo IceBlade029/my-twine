@@ -107,4 +107,122 @@ describe('<StoryStatesManager>', () => {
 			screen.getByTestId(`passage-${story.passages[0].id}`)
 		).not.toHaveTextContent(/<<if/);
 	});
+
+	it('defaults a new list state to an empty list', () => {
+		const story = renderComponent();
+
+		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addState'));
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.stateType'),
+			{target: {value: 'list'}}
+		);
+
+		// The start passage recompiles with an empty-list initialization.
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('= []');
+	});
+
+	it('edits the items of a list state default value', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: ['key'],
+						id: 'state-1',
+						name: 'Inventory',
+						type: 'list'
+					}
+				],
+				version: 1
+			};
+		});
+
+		// One item input for the existing default item.
+		expect(
+			screen.getAllByLabelText('dialogs.passageEdit.visual.listItem')
+		).toHaveLength(1);
+
+		// Add a second item and type it.
+		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addListItem'));
+		fireEvent.change(
+			screen.getAllByLabelText('dialogs.passageEdit.visual.listItem')[1],
+			{target: {value: 'torch'}}
+		);
+
+		// The recompiled default now contains both items.
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('["key","torch"]');
+
+		// Removing the first item updates the default as well.
+		fireEvent.click(
+			screen.getAllByLabelText('dialogs.passageEdit.visual.removeListItem')[0]
+		);
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('["torch"]');
+	});
+
+	it('drops type-incompatible actions and conditions when a state type changes', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						actions: [
+							{operation: 'increase', stateId: 'state-1', value: 1},
+							{operation: 'set', stateId: 'state-1', value: 0}
+						],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Go',
+						targetPassageId: story.passages[1].id
+					},
+					{
+						condition: {
+							operator: 'greaterThan',
+							stateId: 'state-1',
+							value: 2
+						},
+						id: 'text-1',
+						kind: 'text',
+						text: 'High.'
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		// While number, the increase action and greaterThan condition compile.
+		expect(passageText()).toHaveTextContent('$nrp_state_1 += 1');
+		expect(passageText()).toHaveTextContent('$nrp_state_1 gt 2');
+
+		// Changing the type to list strips both; the set action survives.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.stateType'),
+			{target: {value: 'list'}}
+		);
+
+		expect(passageText()).not.toHaveTextContent('$nrp_state_1 += 1');
+		expect(passageText()).not.toHaveTextContent('gt 2');
+		expect(passageText()).toHaveTextContent('$nrp_state_1 = 0');
+	});
 });

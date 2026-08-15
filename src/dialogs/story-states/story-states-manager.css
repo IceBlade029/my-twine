@@ -28,3 +28,15 @@
 	padding: var(--control-inner-padding);
 	width: 100%;
 }
+
+.list-value-input {
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+}
+
+.list-item-row {
+	display: grid;
+	gap: var(--grid-size);
+	grid-template-columns: minmax(0, 1fr) auto;
+}

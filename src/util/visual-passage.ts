@@ -14,7 +14,8 @@ export function visualStateVariable(stateId: string) {
 	return `$nrp_${stateId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 }
 
-function sugarCubeValue(value: boolean | number | string) {
+function sugarCubeValue(value: boolean | number | string | string[]) {
+	// JSON.stringify serializes string arrays as SugarCube array literals.
 	return JSON.stringify(value);
 }
 
@@ -23,6 +24,14 @@ function compileCondition(condition: VisualCondition, states: VisualStoryState[]
 
 	if (!state) {
 		return undefined;
+	}
+
+	if (condition.operator === 'includes') {
+		return `${visualStateVariable(state.id)}.includes(${sugarCubeValue(condition.value)})`;
+	}
+
+	if (condition.operator === 'notIncludes') {
+		return `!${visualStateVariable(state.id)}.includes(${sugarCubeValue(condition.value)})`;
 	}
 
 	const operators = {
@@ -50,6 +59,18 @@ function compileAction(action: VisualStateAction, states: VisualStoryState[]) {
 
 	if (action.operation === 'decrease') {
 		return `${variable} -= ${Number(action.value) || 0}`;
+	}
+
+	if (action.operation === 'push') {
+		return `${variable}.push(${sugarCubeValue(action.value)})`;
+	}
+
+	if (action.operation === 'remove') {
+		return `${variable}.delete(${sugarCubeValue(action.value)})`;
+	}
+
+	if (action.operation === 'clear') {
+		return `${variable} = []`;
 	}
 
 	return `${variable} = ${sugarCubeValue(action.value)}`;
@@ -136,6 +157,40 @@ function compileBlocks(
 				: undefined;
 
 			output.push(condition ? `<<if ${condition}>>${link}<</if>>` : link);
+			return output;
+		}
+
+		if (block.kind === 'variable') {
+			const state = states.find(item => item.id === block.stateId);
+
+			if (!state) {
+				return output;
+			}
+
+			const code = `<<print ${visualStateVariable(state.id)}>>`;
+			const condition = block.condition
+				? compileCondition(block.condition, states)
+				: undefined;
+
+			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+			return output;
+		}
+
+		if (block.kind === 'include') {
+			const target = story.passages.find(
+				passage => passage.id === block.targetPassageId
+			);
+
+			if (!target) {
+				return output;
+			}
+
+			const code = `<<include ${JSON.stringify(target.name)}>>`;
+			const condition = block.condition
+				? compileCondition(block.condition, states)
+				: undefined;
+
+			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
 			return output;
 		}
 

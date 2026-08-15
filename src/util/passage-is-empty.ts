@@ -11,6 +11,14 @@ function blocksHaveContent(blocks: VisualBlock[]): boolean {
 			return block.label !== '';
 		}
 
+		if (block.kind === 'variable') {
+			return block.stateId !== '';
+		}
+
+		if (block.kind === 'include') {
+			return block.targetPassageId !== '';
+		}
+
 		return block.branches.some(branch => blocksHaveContent(branch.blocks));
 	});
 }

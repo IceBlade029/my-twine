@@ -94,6 +94,98 @@ describe('visual editor HTML metadata', () => {
 		);
 	});
 
+	it('round trips variable and include blocks, remapping include targets by name', () => {
+		const story = fakeStory(3);
+		const state = {
+			defaultValue: false,
+			id: 'met-character',
+			name: 'Met character',
+			type: 'boolean' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Intro';
+		story.passages[2].name = 'Extras';
+		story.passages[0].visual = {
+			blocks: [
+				{
+					condition: {operator: 'equals', stateId: state.id, value: true},
+					id: 'var-1',
+					kind: 'variable',
+					stateId: state.id
+				},
+				{
+					branches: [
+						{
+							blocks: [
+								{
+									id: 'inc-1',
+									kind: 'include',
+									targetPassageId: story.passages[1].id
+								}
+							],
+							condition: {
+								operator: 'equals',
+								stateId: state.id,
+								value: true
+							},
+							id: 'branch-a'
+						},
+						{blocks: [], id: 'branch-else'}
+					],
+					id: 'branch-1',
+					kind: 'branch'
+				},
+				{
+					id: 'inc-2',
+					kind: 'include',
+					targetPassageId: story.passages[2].id
+				}
+			],
+			version: 2
+		};
+		story.passages[0].text = compileVisualPassage(
+			story.passages[0].visual,
+			story,
+			story.passages[0].id
+		);
+		const [restored] = importStories(
+			publishStory(story, fakeAppInfo(), {startOptional: true})
+		);
+		const restoredVisual = restored.passages[0]
+			.visual as VisualPassageContentV2;
+
+		// Variable blocks keep their state id directly; states are not remapped.
+		expect(restoredVisual.blocks[0]).toEqual({
+			condition: {operator: 'equals', stateId: state.id, value: true},
+			id: 'var-1',
+			kind: 'variable',
+			stateId: state.id
+		});
+
+		// Include targets remap by passage name to the imported passage ids,
+		// including an include nested inside a branch.
+		const restoredBranch = restoredVisual.blocks[1] as VisualBranchBlock;
+
+		expect(restoredBranch.branches[0].blocks[0]).toMatchObject({
+			id: 'inc-1',
+			kind: 'include',
+			targetPassageId: restored.passages[1].id
+		});
+		expect(restoredVisual.blocks[2]).toMatchObject({
+			id: 'inc-2',
+			kind: 'include',
+			targetPassageId: restored.passages[2].id
+		});
+
+		// The restored model serializes back to exactly the original metadata:
+		// include targets are stored by passage name, so they survive re-import.
+		expect(serializeVisualEditorMetadata(restored)).toEqual(
+			serializeVisualEditorMetadata(story)
+		);
+	});
+
 	it('restores legacy v1 metadata by migrating it to v2', () => {
 		const story = fakeStory(2);
 		const state = {

@@ -1,0 +1,30 @@
+.visual-story-states {
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+}
+
+.section-heading {
+	align-items: center;
+	display: flex;
+	justify-content: space-between;
+}
+
+.section-heading h3 {
+	margin: 0;
+}
+
+.state-row {
+	display: grid;
+	gap: var(--grid-size);
+	grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.5fr) auto;
+}
+
+.state-row input,
+.state-row select {
+	box-sizing: border-box;
+	font: inherit;
+	min-height: var(--control-height);
+	padding: var(--control-inner-padding);
+	width: 100%;
+}

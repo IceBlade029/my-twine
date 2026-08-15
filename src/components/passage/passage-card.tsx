@@ -5,9 +5,10 @@ import {DraggableCore, DraggableCoreProps} from 'react-draggable';
 import {useTranslation} from 'react-i18next';
 import {CardContent} from '../container/card';
 import {SelectableCard} from '../container/card/selectable-card';
-import {Passage, TagColors} from '../../store/stories';
+import {Passage, TagColors, VisualBlock, VisualPassageContent} from '../../store/stories';
 import {TagStripe} from '../tag/tag-stripe';
 import {passageIsEmpty} from '../../util/passage-is-empty';
+import {migrateVisualContent} from '../../util/visual-passage';
 import './passage-card.css';
 import { TagBadges } from '../tag/tag-badges';
 
@@ -25,6 +26,37 @@ export interface PassageCardProps {
 
 // Needs to fill a large-sized passage card.
 const excerptLength = 400;
+
+/**
+ * Returns the text of the first non-empty text block in a visual passage's
+ * block tree, in block order (recurring into branches). Returns '' if there
+ * is no such block.
+ */
+function visualPassageExcerpt(visual: VisualPassageContent): string {
+	const content = migrateVisualContent(visual);
+
+	function firstText(blocks: VisualBlock[]): string {
+		for (const block of blocks) {
+			if (block.kind === 'text' && block.text !== '') {
+				return block.text;
+			}
+
+			if (block.kind === 'branch') {
+				for (const branch of block.branches) {
+					const found = firstText(branch.blocks);
+
+					if (found !== '') {
+						return found;
+					}
+				}
+			}
+		}
+
+		return '';
+	}
+
+	return firstText(content.blocks);
+}
 
 export const PassageCard: React.FC<PassageCardProps> = React.memo(props => {
 	const {
@@ -50,7 +82,9 @@ export const PassageCard: React.FC<PassageCardProps> = React.memo(props => {
 	);
 	const container = React.useRef<HTMLDivElement>(null);
 	const excerpt = React.useMemo(() => {
-		const displayText = passage.visual?.body ?? passage.text;
+		const displayText = passage.visual
+			? visualPassageExcerpt(passage.visual)
+			: passage.text;
 
 		if (displayText.length > 0) {
 			return displayText.substring(0, excerptLength);
@@ -65,7 +99,7 @@ export const PassageCard: React.FC<PassageCardProps> = React.memo(props => {
 				)}
 			</span>
 		);
-	}, [passage.text, passage.visual?.body, t]);
+	}, [passage.text, passage.visual, t]);
 	const style = React.useMemo(
 		() => ({
 			height: passage.height,

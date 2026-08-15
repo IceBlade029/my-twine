@@ -207,12 +207,16 @@
 			"visual": {
 				"actions": "After choosing",
 				"actionOperation": "Action operation",
+				"actionSentence": "After choosing: {{state}} {{operation}} {{value}}",
 				"actionState": "Action state",
 				"actionValue": "Action value",
 				"addAction": "Add action",
 				"addCondition": "Add condition",
 				"addState": "Add story state",
 				"addChoice": "Add choice",
+				"blockKindBranch": "Branch",
+				"blockKindChoice": "Choice",
+				"blockKindText": "Text",
 				"boolean": "Yes / no",
 				"body": "Content",
 				"bodyPlaceholder": "Write what the player sees in this passage.",
@@ -223,20 +227,40 @@
 				"chooseTarget": "Choose a target passage",
 				"condition": "Show when",
 				"conditionOperator": "Condition operator",
+				"conditionSentence": "When {{state}} {{operator}} {{value}}",
 				"conditionState": "Condition state",
 				"conditionValue": "Condition value",
 				"defaultValue": "Default value",
 				"deleteChoice": "Delete choice",
+				"else": "Else",
 				"hideSource": "Hide generated SugarCube",
+				"hidden": "Hidden",
+				"hiddenBecause": "hidden because {{state}} {{operator}} {{value}}",
 				"noChoices": "No choices yet.",
 				"newState": "New state",
+				"noStatesHint": "Create story states first, using the Story States dialog.",
 				"number": "Number",
-				"set": "Set to",
+				"operationDecrease": "decrease by",
+				"operationIncrease": "increase by",
+				"operatorEquals": "is",
+				"operatorGreaterThan": "greater than",
+				"operatorLessThan": "less than",
+				"operatorNotEquals": "is not",
+				"saved": "Saved",
+				"saving": "Saving…",
+				"set": "set to",
 				"showSource": "View generated SugarCube",
+				"simulator": "Simulator",
+				"simulatorToggle": "Show / hide simulator",
+				"simulatorValue": "Simulated value of {{name}}",
 				"states": "Story states",
 				"stateName": "State name",
 				"stateType": "State type",
-				"text": "Text"
+				"switchToSource": "Edit as source",
+				"switchToSourceConfirm": "Switching to source editing is one-way: you will not be able to return to the visual editor for this passage. Continue?",
+				"text": "Text",
+				"valueNo": "no",
+				"valueYes": "yes"
 			}
 		},
 		"passageTags": {
@@ -306,6 +330,9 @@
 			"replaceAll": "Replace In All Passages",
 			"replaceWith": "Replace With",
 			"useRegexes": "Use Regular Expressions"
+		},
+		"storyStates": {
+			"title": "Story States"
 		},
 		"storyStylesheet": {
 			"editorLabel": "Story Stylesheet",
@@ -385,6 +412,9 @@
 				"proofStory": "View Proofing Copy",
 				"publishToFile": "Publish to File",
 				"selectAllPassages": "Select All Passages"
+			},
+			"storyStatesButton": {
+				"label": "Story States"
 			},
 			"zoomButtons": {
 				"legend": "Zoom",

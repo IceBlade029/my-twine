@@ -34,6 +34,88 @@
 	margin: 0;
 }
 
+.visual-editor-header {
+	align-items: center;
+	display: flex;
+	justify-content: flex-end;
+}
+
+.save-indicator {
+	color: var(--gray);
+	font-size: 0.9em;
+}
+
+.block-header {
+	align-items: center;
+	display: flex;
+	gap: var(--grid-size);
+	justify-content: space-between;
+}
+
+.block-gate {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--grid-size);
+	min-width: 0;
+}
+
+.block-kind {
+	font-weight: bold;
+}
+
+.block-condition-summary,
+.condition-summary,
+.hidden-badge {
+	color: var(--gray);
+	font-size: 0.9em;
+}
+
+.visual-block-body.is-hidden {
+	opacity: 0.4;
+}
+
+.choice-actions-summary {
+	color: var(--gray);
+	font-size: 0.9em;
+	margin: 0;
+	padding-left: calc(2 * var(--grid-size));
+}
+
+.simulator-section {
+	border-top: 1px solid var(--light-gray);
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+	padding-top: calc(2 * var(--grid-size));
+}
+
+.simulator-drawer {
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+}
+
+.simulator-row {
+	align-items: center;
+	display: grid;
+	gap: var(--grid-size);
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.simulator-row input,
+.simulator-row select {
+	box-sizing: border-box;
+	font: inherit;
+	min-height: var(--control-height);
+	padding: var(--control-inner-padding);
+	width: 100%;
+}
+
+.visual-passage-branch .branch.is-inactive {
+	opacity: 0.4;
+}
+
 .visual-passage-choices {
 	display: flex;
 	flex-direction: column;
@@ -52,8 +134,6 @@
 
 .visual-passage-choice input,
 .visual-passage-choice select,
-.state-row input,
-.state-row select,
 .condition-editor input,
 .condition-editor select,
 .action-row input,
@@ -65,7 +145,6 @@
 	width: 100%;
 }
 
-.visual-story-states,
 .choice-actions,
 .body-condition {
 	display: flex;
@@ -73,7 +152,6 @@
 	gap: var(--grid-size);
 }
 
-.state-row,
 .condition-editor,
 .action-row {
 	display: grid;

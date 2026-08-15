@@ -10,5 +10,6 @@ export * from './story-import';
 export * from './story-javascript';
 export * from './story-details';
 export * from './story-search';
+export * from './story-states';
 export * from './story-stylesheet';
 export * from './story-tags';

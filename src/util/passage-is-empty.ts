@@ -1,4 +1,19 @@
-import {Passage} from '../store/stories';
+import {Passage, VisualBlock} from '../store/stories';
+import {migrateVisualContent} from './visual-passage';
+
+function blocksHaveContent(blocks: VisualBlock[]): boolean {
+	return blocks.some(block => {
+		if (block.kind === 'text') {
+			return block.text !== '';
+		}
+
+		if (block.kind === 'choice') {
+			return block.label !== '';
+		}
+
+		return block.branches.some(branch => blocksHaveContent(branch.blocks));
+	});
+}
 
 /**
  * Returns whether a passage is considered empty, e.g. whether the user has put
@@ -6,7 +21,7 @@ import {Passage} from '../store/stories';
  */
 export function passageIsEmpty(passage: Passage) {
 	const hasContent = passage.visual
-		? passage.visual.body !== '' || passage.visual.choices.length > 0
+		? blocksHaveContent(migrateVisualContent(passage.visual).blocks)
 		: passage.text !== '';
 
 	return (

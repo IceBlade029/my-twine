@@ -46,7 +46,7 @@ export interface Passage {
 	 * Structured authoring data used by the visual passage editor. If absent,
 	 * the passage is edited as SugarCube source.
 	 */
-	visual?: VisualPassageContentV1;
+	visual?: VisualPassageContent;
 	/**
 	 * Top (e.g. Y) position of the top-left corner of the passage in pixels.
 	 */
@@ -74,6 +74,46 @@ export interface VisualPassageContentV1 {
 	bodyCondition?: VisualCondition;
 	choices: VisualPassageChoice[];
 	version: 1;
+}
+
+/**
+ * An ordered tree of blocks that make up a visually authored passage.
+ */
+export type VisualPassageContent = VisualPassageContentV1 | VisualPassageContentV2;
+
+export interface VisualPassageContentV2 {
+	blocks: VisualBlock[];
+	version: 2;
+}
+
+export type VisualBlock = VisualTextBlock | VisualChoiceBlock | VisualBranchBlock;
+
+export interface VisualTextBlock {
+	kind: 'text';
+	id: string;
+	text: string;
+	condition?: VisualCondition;
+}
+
+export interface VisualChoiceBlock {
+	kind: 'choice';
+	id: string;
+	label: string;
+	targetPassageId: string; // '' means incomplete
+	condition?: VisualCondition;
+	actions: VisualStateAction[];
+}
+
+export interface VisualBranchBlock {
+	kind: 'branch';
+	id: string;
+	branches: VisualBranch[]; // >= 2
+}
+
+export interface VisualBranch {
+	id: string;
+	condition?: VisualCondition; // undefined means the 'else' branch: must be last and unique
+	blocks: VisualBlock[];
 }
 
 export type VisualStateType = 'boolean' | 'number' | 'text';

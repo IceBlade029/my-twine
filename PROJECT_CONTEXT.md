@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：完成阶段 6.5（BlockShell 外壳抽象 + 块元数据注册表 + depth 埋点，纯重构无视觉变化），提交 `936741b5`，验收通过（lint/tsc/37 单测 + 视觉确认无回归）。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：完成阶段 7（就地交互块 reveal/append/remove + choice 的 back/return 导航），提交 `b03d7c66`，验收通过（lint/tsc/50 单测 + 视觉验收）。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -40,6 +40,7 @@
 | `8edad74d` | **阶段 5 的功能提交**：`feat: rebuild visual passage editor as ordered node tree (blocks v2) with simulator and story-states dialog` |
 | `75c8eae8` | **阶段 6 的功能提交**：`feat: add list state type with list actions/conditions, and variable + include blocks` |
 | `936741b5` | **阶段 6.5 的重构提交**：`refactor: extract unified BlockShell and block-kind metadata registry` |
+| `b03d7c66` | **阶段 7 的功能提交**：`feat: add in-place interaction blocks (reveal/append/remove) and back/return choice targets` |
 
 ### 约定
 
@@ -234,6 +235,15 @@
 
 完成情况（提交 `936741b5`，验收通过）：`BlockShell` 统一承载块头部/门槛条/工具栏；`blockKindMeta` 注册表（kind → icon + labelKey，五个块各配图标）；`BlockList` 改用 `BlockShell`、`BranchEditor` 去掉重复的 branch-heading、`depth` 参数透传并落到 `data-depth`（为树形视觉预留）。纯重构，无视觉回归（仅新增图标与 data-depth，去掉分支块里重复的 "Branch" 标签）。`lint`/`tsc`/相关单测 37/37 通过，视觉截图确认无回归。
 
+### 阶段 7：交互块家族（已完成）
+
+完成情况（提交 `b03d7c66`，验收通过）：
+- **就地交互块**（`kind:'interaction'`）：`operation` = `reveal`/`append`/`remove`，自包含 hook id（`nrp_hook_<id>`），编译为 SugarCube `<<link "label">><<replace/append/remove "#hook">>content<</replace/append/remove>><</link>><span id="hook">…</span>`，条件包裹整体；label 为空时跳过并在 UI 标 incomplete。
+- **back/return 导航**：`VisualChoiceBlock.specialTarget?: 'back' | 'return'`，编译为 `<<back "label">>` / `<<return "label">>`（无 setter，条件包裹）；编辑器目标下拉框新增 Back/Return。
+- 元数据：interaction 块原样往返（无目标重映射）、choice 的 specialTarget 随 spread 往返。
+- 消费方：interaction 块 label/content 非空即算有内容；`passage-card` 摘要跳过；`stripStateReferences` 删除状态时剥掉 interaction 块的条件。
+- 验收：`npm run lint` + `npx tsc --noEmit` + 相关单测 4 套 50/50；视觉截图确认 Interaction 块（Interaction text / Operation / Content / Add condition）正常渲染。
+
 ### 阶段 6–9：SugarCube 全能力可视化（路线草案，阶段 6 已完成）
 
 > 方向决策（用户拍板）：目标是"全部做成我们的可视化适配"，让作者始终待在可视化里。**运行时唯一真相仍是 SugarCube**——可视化只是生成器/投影，永不反向解析（延续既有原则）。四条定调见下。
@@ -259,7 +269,7 @@
 分阶段路线：
 - **阶段 5（已定）**：浅树 + 分支 + 人话条件 + 模拟器 + 状态面板 + 修 bug + 单向切源码。
 - **阶段 6（已完成）**：状态类型扩展 `list` + 数组动作（push/remove/clear + includes/notIncludes）；加「变量插入块」「引用块」。提交 `75c8eae8`。
-- **阶段 7**：交互块家族（就地改写/追加/移除、goto/back/return）。
+- **阶段 7（已完成）**：交互块家族（就地 reveal/append/remove + choice 的 back/return）。提交 `b03d7c66`。
 - **阶段 8**：流程容器（循环块、switch 块）；表达式边界定案落地。
 - **阶段 9**：特殊段落可视化表面（StoryInit 等）+ 可复用组件（若届时决定单独做）。
 

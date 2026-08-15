@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：完成阶段 5 实现（节点树 blocks v2 + 人话条件 + 模拟器 + 故事状态对话框 + 单向切源码），提交 `8edad74d`，验收通过（lint/tsc/27 单测 + 视觉验收）。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：完成阶段 6（list 状态类型 + push/remove/clear + includes/notIncludes + 变量插入块 + 引用块），提交 `75c8eae8`，验收通过（lint/tsc/41 单测 + 视觉验收）。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -38,6 +38,7 @@
 | `4729fac7` | **阶段 1–4 的功能提交**：`feat: add visual passage editor and metadata` |
 | `88d43ecf` | `chore: sync package-lock version to 2.12.0`（保留并提交 package-lock 版本号同步） |
 | `8edad74d` | **阶段 5 的功能提交**：`feat: rebuild visual passage editor as ordered node tree (blocks v2) with simulator and story-states dialog` |
+| `75c8eae8` | **阶段 6 的功能提交**：`feat: add list state type with list actions/conditions, and variable + include blocks` |
 
 ### 约定
 
@@ -208,7 +209,17 @@
 2. 模拟器的布尔输入仍是 `true/false` 字面值，而条件值选择已用 yes/no（不一致）。
 3. 部分块操作按钮（Add text block / Add branch / Move up / Move down / Delete block）仍是硬编码英文，未进 i18n。
 
-### 阶段 6–9：SugarCube 全能力可视化（路线草案，未开始）
+### 阶段 6：list 数据结构 + 变量插入块 + 引用块（已完成）
+
+完成情况（提交 `75c8eae8`，验收通过）：
+- **list 状态类型**：`VisualStateType` 加 `list`（默认值 `string[]`）；动作加 `push`/`remove`/`clear`（编译 `$x.push(v)` / `$x.delete(v)` / `$x = []`）；条件加 `includes`/`notIncludes`（编译 `$x.includes(v)` / `!$x.includes(v)`）。
+- **状态管理器**：list 默认值用 `ListValueInput` 逐项编辑（增删 item）；类型切换时清理不兼容的动作/条件（`isActionCompatible` / `isConditionCompatible`）。
+- **变量插入块**（`kind:'variable'`）：渲染某状态当前值，编译 `<<print $nrp_x>>`；**引用块**（`kind:'include'`）：内联另一段落，编译 `<<include "Passage">>`；两者都支持条件包裹、缺引用时跳过并在 UI 标 incomplete。
+- **元数据**：include 块的 `targetPassageId` 按段落名重映射（递归，含嵌套分支）；variable 块的 `stateId` 直接保留。
+- **模拟器**：list 状态用逗号分隔输入解析为 `string[]`，`evaluateCondition` 支持 includes/notIncludes。
+- 验收：`npm run lint`、`npx tsc --noEmit` 通过；相关单测 4 套 41/41；视觉验收截图确认列表状态编辑器 / Variable 块 / Include 块 / 模拟器列表输入。
+
+### 阶段 6–9：SugarCube 全能力可视化（路线草案，阶段 6 已完成）
 
 > 方向决策（用户拍板）：目标是"全部做成我们的可视化适配"，让作者始终待在可视化里。**运行时唯一真相仍是 SugarCube**——可视化只是生成器/投影，永不反向解析（延续既有原则）。四条定调见下。
 
@@ -232,7 +243,7 @@
 
 分阶段路线：
 - **阶段 5（已定）**：浅树 + 分支 + 人话条件 + 模拟器 + 状态面板 + 修 bug + 单向切源码。
-- **阶段 6**：状态类型扩展 `list` + 数组动作；加「变量插入块」「引用块」。
+- **阶段 6（已完成）**：状态类型扩展 `list` + 数组动作（push/remove/clear + includes/notIncludes）；加「变量插入块」「引用块」。提交 `75c8eae8`。
 - **阶段 7**：交互块家族（就地改写/追加/移除、goto/back/return）。
 - **阶段 8**：流程容器（循环块、switch 块）；表达式边界定案落地。
 - **阶段 9**：特殊段落可视化表面（StoryInit 等）+ 可复用组件（若届时决定单独做）。

@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：完成阶段 6（list 状态类型 + push/remove/clear + includes/notIncludes + 变量插入块 + 引用块），提交 `75c8eae8`，验收通过（lint/tsc/41 单测 + 视觉验收）。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：完成阶段 6.5（BlockShell 外壳抽象 + 块元数据注册表 + depth 埋点，纯重构无视觉变化），提交 `936741b5`，验收通过（lint/tsc/37 单测 + 视觉确认无回归）。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -39,6 +39,7 @@
 | `88d43ecf` | `chore: sync package-lock version to 2.12.0`（保留并提交 package-lock 版本号同步） |
 | `8edad74d` | **阶段 5 的功能提交**：`feat: rebuild visual passage editor as ordered node tree (blocks v2) with simulator and story-states dialog` |
 | `75c8eae8` | **阶段 6 的功能提交**：`feat: add list state type with list actions/conditions, and variable + include blocks` |
+| `936741b5` | **阶段 6.5 的重构提交**：`refactor: extract unified BlockShell and block-kind metadata registry` |
 
 ### 约定
 
@@ -218,6 +219,20 @@
 - **元数据**：include 块的 `targetPassageId` 按段落名重映射（递归，含嵌套分支）；variable 块的 `stateId` 直接保留。
 - **模拟器**：list 状态用逗号分隔输入解析为 `string[]`，`evaluateCondition` 支持 includes/notIncludes。
 - 验收：`npm run lint`、`npx tsc --noEmit` 通过；相关单测 4 套 41/41；视觉验收截图确认列表状态编辑器 / Variable 块 / Include 块 / 模拟器列表输入。
+
+### 阶段 6.5：块外壳抽象（BlockShell）（已完成）
+
+> 前置小阶段（用户拍板）：进入阶段 7 之前，先把每个块的「头部 / 工具栏 / 门槛条」抽象成统一的 `BlockShell` 外壳，避免 7/8/9 每加一种块就复制一套头部，从而让末尾的「树形视觉大修」只需改一个外壳 + CSS。用户已确认顺序：**先完成地基与能力层，再大修视觉与交互**。
+
+计划目标（纯重构，无可见视觉变化）：
+- 抽出 `BlockShell` 组件，统一承载：图标槽 + 块类型标签 + 条件门槛条（条件句 / hidden 徽章）+ 上移/下移/删除工具栏 + 内容体。
+- 建立「块种类元数据注册表」：`kind → {icon, labelKey}`（text/choice/branch/variable/include 各配一个图标）。
+- `BlockList` 改用 `BlockShell` 渲染，消除各块头部/工具栏的复制粘贴。
+- `BranchEditor` 去掉自带的 `branch-heading`（重复的 "Branch" 标签改由 BlockShell 提供），只保留分支列表 + 条件行 + 嵌套 `BlockList`。
+- 埋入 `depth` 参数（BlockShell 设 `data-depth`，分支内嵌套 `depth+1`），为将来的缩进/树线/折叠预留接口，但**本阶段不改变视觉**。
+- 验收：`npm run lint` + `npx tsc --noEmit` + 相关单测保持通过；视觉上编辑器渲染不变（无回归）。
+
+完成情况（提交 `936741b5`，验收通过）：`BlockShell` 统一承载块头部/门槛条/工具栏；`blockKindMeta` 注册表（kind → icon + labelKey，五个块各配图标）；`BlockList` 改用 `BlockShell`、`BranchEditor` 去掉重复的 branch-heading、`depth` 参数透传并落到 `data-depth`（为树形视觉预留）。纯重构，无视觉回归（仅新增图标与 data-depth，去掉分支块里重复的 "Branch" 标签）。`lint`/`tsc`/相关单测 37/37 通过，视觉截图确认无回归。
 
 ### 阶段 6–9：SugarCube 全能力可视化（路线草案，阶段 6 已完成）
 

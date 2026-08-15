@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：新增「阶段 5：可视化编辑器重构」计划（节点树 + 人话条件 + 模拟器），并修订视觉验收流程（flash 只截图、主模型一次验收、不做全量截图）。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：新增「阶段 5：可视化编辑器重构」计划（节点树 + 人话条件 + 模拟器），并修订协作流程（flash 只实现、主模型亲自截图验收、不做全量截图）。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -262,8 +262,8 @@ npm run e2e              # Playwright E2E
 | 环节 | 负责人 | 方式 |
 | --- | --- | --- |
 | 计划 / 拆解 / 写 brief | 主模型 | 目标、现状、约束、验收标准(DoD) 写入自包含 brief |
-| 重活执行（写码、脚本、批量改动、构建、测试、截图） | flash 子代理 | 主模型用 `workflow` 的 `agent(prompt, {model, provider})` 分派 |
-| 验收（构建/测试/diff + 视觉） | 主模型 | 跑验证 + `view_image` 看截图，不合格打回 flash |
+| 重活执行（写码、脚本、批量改动） | flash 子代理 | 主模型用 `workflow` 的 `agent(prompt, {model, provider})` 分派 |
+| 验收（构建/测试/diff + 亲自截图 + 视觉） | 主模型 | 跑验证、亲自截图、`view_image` 判断，不合格打回 flash |
 
 ### 模型标识（当前 harness 配置，环境变化时以实际为准）
 
@@ -271,10 +271,10 @@ npm run e2e              # Playwright E2E
 - 主模型：`provider: "deepseek-official"`，`model: "deepseek-v4-pro"`
 - 在 workflow 的 `meta.phases` 或每个 `agent()` 的 opts 里显式固定 flash，不依赖 preset 默认，避免子代理落到其他模型。
 
-### 视觉验收闭环（2026-08 修订：截图与验收彻底分工，不做全量截图）
+### 视觉验收闭环（2026-08 修订：flash 只实现，主模型亲自截图验收）
 
-- flash 只负责**截图**：按主模型在 brief 里点名的**少量关键状态（一般 5–8 张）**用 Playwright 截图落盘，返回 `{label, path}` 清单；**不做任何"好不好用"的判断**，也不做全量遍历截图（太慢）。
-- 主模型负责**视觉验收（仅一次）**：用 `view_image` 看 flash 交回的截图做判断与总结；不再由 flash 先解读一遍、主模型又复读一遍。
+- flash 只负责**实现改动**（写码、脚本、批量改动）；**不截图、不做视觉判断**。
+- 主模型在**验收阶段亲自**：启动应用、用 Playwright 对**少量关键状态（一般 5–8 张）**截图落盘，再用 `view_image` 逐一判断与总结。
 - 首次若缺 chromium 二进制，先 `npx playwright install chromium`。
 
 ### 三条硬约定

@@ -247,28 +247,28 @@ describe('human-readable conditions and actions', () => {
 				{operator: 'equals', stateId: 'door', value: true},
 				states
 			)
-		).toBe('When Door is yes');
+		).toBe('When Door = true');
 		expect(
 			conditionSentenceText(
 				tEn,
 				{operator: 'greaterThan', stateId: 'trust', value: 5},
 				states
 			)
-		).toBe('When Trust greater than 5');
+		).toBe('When Trust > 5');
 		expect(
 			conditionSentenceText(
 				tZh,
 				{operator: 'equals', stateId: 'door', value: false},
 				states
 			)
-		).toBe('当【Door】是 『否』时');
+		).toBe('当【Door】= false时');
 		expect(
 			hiddenBecauseText(
 				tZh,
 				{operator: 'equals', stateId: 'door', value: false},
 				states
 			)
-		).toBe('因【Door】是 『否』而隐藏');
+		).toBe('因【Door】= false而隐藏');
 		expect(
 			actionSentenceText(
 				tEn,

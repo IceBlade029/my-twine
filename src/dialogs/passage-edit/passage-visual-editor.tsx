@@ -61,29 +61,18 @@ export function evaluateCondition(
 	}
 }
 
-function conditionOperatorWord(
-	t: TFunction,
-	operator: VisualCondition['operator']
-) {
-	const keys = {
-		equals: 'dialogs.passageEdit.visual.operatorEquals',
-		notEquals: 'dialogs.passageEdit.visual.operatorNotEquals',
-		greaterThan: 'dialogs.passageEdit.visual.operatorGreaterThan',
-		lessThan: 'dialogs.passageEdit.visual.operatorLessThan'
+function conditionOperatorSymbol(operator: VisualCondition['operator']) {
+	const symbols = {
+		equals: '=',
+		notEquals: '≠',
+		greaterThan: '>',
+		lessThan: '<'
 	} as const;
 
-	return t(keys[operator]);
+	return symbols[operator];
 }
 
-function conditionValueWord(t: TFunction, value: boolean | number | string) {
-	if (typeof value === 'boolean') {
-		return t(
-			value
-				? 'dialogs.passageEdit.visual.valueYes'
-				: 'dialogs.passageEdit.visual.valueNo'
-		);
-	}
-
+function conditionValueText(value: boolean | number | string) {
 	return String(value);
 }
 
@@ -95,9 +84,9 @@ function conditionInterpolation(
 	const state = states.find(item => item.id === condition.stateId);
 
 	return {
-		operator: conditionOperatorWord(t, condition.operator),
+		operator: conditionOperatorSymbol(condition.operator),
 		state: state?.name ?? '?',
-		value: conditionValueWord(t, condition.value)
+		value: conditionValueText(condition.value)
 	};
 }
 
@@ -290,27 +279,6 @@ function useDebouncedSave<T>(
 	return [value, schedule, flush];
 }
 
-/** Boolean value select that shows 是/否 (yes/no) instead of raw literals. */
-function BooleanValueSelect(props: {
-	label: string;
-	onChange: (value: boolean) => void;
-	value: boolean;
-}) {
-	const {label, onChange, value} = props;
-	const {t} = useTranslation();
-
-	return (
-		<select
-			aria-label={label}
-			onChange={event => onChange(event.target.value === 'true')}
-			value={String(value)}
-		>
-			<option value="false">{t('dialogs.passageEdit.visual.valueNo')}</option>
-			<option value="true">{t('dialogs.passageEdit.visual.valueYes')}</option>
-		</select>
-	);
-}
-
 function ConditionEditor(props: {
 	condition?: VisualCondition;
 	onChange: (condition?: VisualCondition) => void;
@@ -378,37 +346,21 @@ function ConditionEditor(props: {
 					}
 					value={condition.operator}
 				>
-					<option value="equals">
-						{t('dialogs.passageEdit.visual.operatorEquals')}
-					</option>
-					<option value="notEquals">
-						{t('dialogs.passageEdit.visual.operatorNotEquals')}
-					</option>
+					<option value="equals">=</option>
+					<option value="notEquals">≠</option>
 					{state?.type === 'number' && (
-						<option value="greaterThan">
-							{t('dialogs.passageEdit.visual.operatorGreaterThan')}
-						</option>
+						<option value="greaterThan">&gt;</option>
 					)}
 					{state?.type === 'number' && (
-						<option value="lessThan">
-							{t('dialogs.passageEdit.visual.operatorLessThan')}
-						</option>
+						<option value="lessThan">&lt;</option>
 					)}
 				</select>
-				{state?.type === 'boolean' ? (
-					<BooleanValueSelect
-						label={t('dialogs.passageEdit.visual.conditionValue')}
-						onChange={value => onChange({...condition, value})}
-						value={Boolean(condition.value)}
-					/>
-				) : (
-					<StateValueInput
-						label={t('dialogs.passageEdit.visual.conditionValue')}
-						onChange={value => onChange({...condition, value})}
-						state={state}
-						value={condition.value}
-					/>
-				)}
+				<StateValueInput
+					label={t('dialogs.passageEdit.visual.conditionValue')}
+					onChange={value => onChange({...condition, value})}
+					state={state}
+					value={condition.value}
+				/>
 				<button onClick={() => onChange(undefined)} type="button">×</button>
 			</div>
 			<p className="condition-summary">

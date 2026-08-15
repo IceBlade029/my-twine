@@ -108,6 +108,56 @@ describe('<StoryStatesManager>', () => {
 		).not.toHaveTextContent(/<<if/);
 	});
 
+	it('strips an interaction block condition referencing a deleted state', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: {
+							operator: 'greaterThan',
+							stateId: 'state-1',
+							value: 2
+						},
+						content: 'Secret.',
+						id: 'int-1',
+						kind: 'interaction',
+						label: 'Reveal',
+						operation: 'reveal'
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		// The condition compiles while the state exists.
+		expect(passageText()).toHaveTextContent(/<<if \$nrp_/);
+
+		// Deleting the state strips the interaction block's condition but keeps
+		// the block itself, like a text block.
+		fireEvent.click(screen.getByText('×'));
+
+		expect(passageText()).not.toHaveTextContent(/<<if/);
+		expect(passageText()).toHaveTextContent('<<link "Reveal">>');
+	});
+
 	it('defaults a new list state to an empty list', () => {
 		const story = renderComponent();
 

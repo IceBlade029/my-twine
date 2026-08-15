@@ -255,6 +255,171 @@ describe('visual passage utilities', () => {
 		);
 	});
 
+	it('compiles back/return choices without a setter', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Hallway';
+
+		const source = compileVisualPassage(
+			{
+				blocks: [
+					{
+						actions: [{operation: 'set', stateId: state.id, value: 3}],
+						id: 'choice-back',
+						kind: 'choice',
+						label: 'Go back',
+						specialTarget: 'back',
+						targetPassageId: story.passages[1].id
+					},
+					{
+						actions: [],
+						condition: {operator: 'equals', stateId: state.id, value: 1},
+						id: 'choice-return',
+						kind: 'choice',
+						label: 'Return',
+						specialTarget: 'return',
+						targetPassageId: story.passages[1].id
+					}
+				],
+				version: 2
+			},
+			story,
+			story.passages[0].id
+		);
+
+		// specialTarget ignores the target passage id and the actions: the
+		// back/return macros have no setter, and a condition wraps the link.
+		expect(source).toBe(
+			'<<back "Go back">>\n\n<<if $nrp_trust is 1>><<return "Return">><</if>>'
+		);
+	});
+
+	it('compiles interaction blocks to in-place link macros', () => {
+		const story = fakeStory(1);
+
+		story.visual = {states: [], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							content: 'A secret.',
+							id: 'int-1',
+							kind: 'interaction',
+							label: 'Reveal',
+							operation: 'reveal'
+						},
+						{
+							content: ' more',
+							id: 'int-2',
+							kind: 'interaction',
+							label: 'Append',
+							operation: 'append'
+						},
+						{
+							content: 'Peek.',
+							id: 'int-3',
+							kind: 'interaction',
+							label: 'Remove',
+							operation: 'remove'
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe(
+			'<<link "Reveal">><<replace "#nrp_hook_int_1">>A secret.<</replace>><</link>><span id="#nrp_hook_int_1"></span>\n\n' +
+				'<<link "Append">><<append "#nrp_hook_int_2">> more<</append>><</link>><span id="#nrp_hook_int_2"></span>\n\n' +
+				'<<link "Remove">><<remove "#nrp_hook_int_3">><</link>><span id="#nrp_hook_int_3">Peek.</span>'
+		);
+	});
+
+	it('skips interaction blocks with an empty label and sanitizes hook ids', () => {
+		const story = fakeStory(1);
+
+		story.visual = {states: [], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							content: 'Hidden.',
+							id: 'int-1',
+							kind: 'interaction',
+							label: '   ',
+							operation: 'reveal'
+						},
+						{
+							content: 'Text.',
+							id: 'int a.b',
+							kind: 'interaction',
+							label: 'Show',
+							operation: 'reveal'
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe(
+			'<<link "Show">><<replace "#nrp_hook_int_a_b">>Text.<</replace>><</link>><span id="#nrp_hook_int_a_b"></span>'
+		);
+	});
+
+	it('wraps interaction blocks in their conditions', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: false,
+			id: 'flag',
+			name: 'Flag',
+			type: 'boolean' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							condition: {
+								operator: 'equals',
+								stateId: state.id,
+								value: true
+							},
+							content: 'Secret.',
+							id: 'int-1',
+							kind: 'interaction',
+							label: 'Reveal',
+							operation: 'reveal'
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe(
+			'<<if $nrp_flag is true>><<link "Reveal">><<replace "#nrp_hook_int_1">>Secret.<</replace>><</link>><span id="#nrp_hook_int_1"></span><</if>>'
+		);
+	});
+
 	it('compiles nested branches with conditions and an else branch', () => {
 		const story = fakeStory(3);
 		const state = {

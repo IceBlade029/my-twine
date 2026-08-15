@@ -89,6 +89,7 @@ export interface VisualPassageContentV2 {
 export type VisualBlock =
 	| VisualTextBlock
 	| VisualChoiceBlock
+	| VisualInteractionBlock
 	| VisualVariableBlock
 	| VisualIncludeBlock
 	| VisualBranchBlock;
@@ -105,8 +106,25 @@ export interface VisualChoiceBlock {
 	id: string;
 	label: string;
 	targetPassageId: string; // '' means incomplete
+	/**
+	 * When set, the choice navigates back/return instead of to
+	 * targetPassageId. The target passage id is ignored while set.
+	 */
+	specialTarget?: 'back' | 'return';
 	condition?: VisualCondition;
 	actions: VisualStateAction[];
+}
+
+export interface VisualInteractionBlock {
+	kind: 'interaction';
+	id: string;
+	/** Text shown on the link. An empty value means the block is incomplete. */
+	label: string;
+	/** How clicking the link changes the hook element's content. */
+	operation: 'reveal' | 'append' | 'remove';
+	/** Content shown, appended, or initially present in the hook element. */
+	content: string;
+	condition?: VisualCondition;
 }
 
 export interface VisualVariableBlock {

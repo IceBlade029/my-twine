@@ -19,6 +19,10 @@ function blocksHaveContent(blocks: VisualBlock[]): boolean {
 			return block.targetPassageId !== '';
 		}
 
+		if (block.kind === 'interaction') {
+			return block.label !== '' || block.content !== '';
+		}
+
 		return block.branches.some(branch => blocksHaveContent(branch.blocks));
 	});
 }

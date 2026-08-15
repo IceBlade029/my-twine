@@ -7,6 +7,7 @@ import {
 	IconFileImport,
 	IconGitBranch,
 	IconPlus,
+	IconPointer,
 	IconSourceCode,
 	IconTrash,
 	IconTypography,
@@ -25,6 +26,7 @@ import {
 	VisualChoiceBlock,
 	VisualCondition,
 	VisualIncludeBlock,
+	VisualInteractionBlock,
 	VisualPassageContent,
 	VisualPassageContentV2,
 	VisualStateAction,
@@ -71,6 +73,10 @@ const blockKindMeta: Record<VisualBlock['kind'], BlockKindMeta> = {
 	include: {
 		icon: IconFileImport,
 		labelKey: 'dialogs.passageEdit.visual.blockKindInclude'
+	},
+	interaction: {
+		icon: IconPointer,
+		labelKey: 'dialogs.passageEdit.visual.blockKindInteraction'
 	}
 };
 
@@ -562,10 +568,18 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 				<span>{t('dialogs.passageEdit.visual.choiceTarget')}</span>
 				<select
 					disabled={disabled}
-					onChange={event =>
-						onUpdate({targetPassageId: event.target.value})
-					}
-					value={choice.targetPassageId}
+					onChange={event => {
+						const value = event.target.value;
+
+						// Back/return navigate instead of to a passage: they set
+						// specialTarget and clear the passage target.
+						if (value === 'back' || value === 'return') {
+							onUpdate({specialTarget: value, targetPassageId: ''});
+						} else {
+							onUpdate({specialTarget: undefined, targetPassageId: value});
+						}
+					}}
+					value={choice.specialTarget ?? choice.targetPassageId}
 				>
 					<option value="">
 						{t('dialogs.passageEdit.visual.chooseTarget')}
@@ -575,6 +589,12 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 							{target.name}
 						</option>
 					))}
+					<option value="back">
+						{t('dialogs.passageEdit.visual.targetBack')}
+					</option>
+					<option value="return">
+						{t('dialogs.passageEdit.visual.targetReturn')}
+					</option>
 				</select>
 			</label>
 			<div>
@@ -792,6 +812,78 @@ const IncludeEditor: React.FC<IncludeEditorProps> = props => {
 				</select>
 			</label>
 			{block.targetPassageId === '' && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.blockIncomplete')}
+				</p>
+			)}
+			<div>
+				<span>{t('dialogs.passageEdit.visual.condition')}</span>
+				<ConditionEditor
+					condition={block.condition}
+					onChange={condition => onUpdate({condition})}
+					states={states}
+				/>
+			</div>
+		</div>
+	);
+};
+
+interface InteractionBlockEditorProps {
+	block: VisualInteractionBlock;
+	disabled?: boolean;
+	onUpdate: (props: Partial<VisualInteractionBlock>) => void;
+	states: VisualStoryState[];
+}
+
+const InteractionBlockEditor: React.FC<InteractionBlockEditorProps> = props => {
+	const {block, disabled, onUpdate, states} = props;
+	const {t} = useTranslation();
+
+	return (
+		<div className="visual-passage-interaction">
+			<label>
+				<span>{t('dialogs.passageEdit.visual.interactionLabel')}</span>
+				<input
+					aria-label={t('dialogs.passageEdit.visual.interactionLabel')}
+					disabled={disabled}
+					onChange={event => onUpdate({label: event.target.value})}
+					value={block.label}
+				/>
+			</label>
+			<label>
+				<span>{t('dialogs.passageEdit.visual.interactionOperation')}</span>
+				<select
+					aria-label={t('dialogs.passageEdit.visual.interactionOperation')}
+					disabled={disabled}
+					onChange={event =>
+						onUpdate({
+							operation: event.target
+								.value as VisualInteractionBlock['operation']
+						})
+					}
+					value={block.operation}
+				>
+					<option value="reveal">
+						{t('dialogs.passageEdit.visual.operationReveal')}
+					</option>
+					<option value="append">
+						{t('dialogs.passageEdit.visual.operationAppend')}
+					</option>
+					<option value="remove">
+						{t('dialogs.passageEdit.visual.interactionOperationRemove')}
+					</option>
+				</select>
+			</label>
+			<label>
+				<span>{t('dialogs.passageEdit.visual.interactionContent')}</span>
+				<textarea
+					aria-label={t('dialogs.passageEdit.visual.interactionContent')}
+					disabled={disabled}
+					onChange={event => onUpdate({content: event.target.value})}
+					value={block.content}
+				/>
+			</label>
+			{block.label === '' && (
 				<p className="empty-state">
 					{t('dialogs.passageEdit.visual.blockIncomplete')}
 				</p>
@@ -1140,6 +1232,19 @@ const BlockList: React.FC<BlockListProps> = props => {
 		]);
 	}
 
+	function addInteractionBlock() {
+		onChange([
+			...blocks,
+			{
+				content: '',
+				id: uuid(),
+				kind: 'interaction',
+				label: '',
+				operation: 'reveal'
+			}
+		]);
+	}
+
 	return (
 		<div className="visual-block-list">
 			{blocks.map((block, index) => {
@@ -1228,6 +1333,16 @@ const BlockList: React.FC<BlockListProps> = props => {
 								story={story}
 							/>
 						)}
+						{block.kind === 'interaction' && (
+							<InteractionBlockEditor
+								block={block}
+								disabled={disabled}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+							/>
+						)}
 					</BlockShell>
 				);
 			})}
@@ -1265,6 +1380,13 @@ const BlockList: React.FC<BlockListProps> = props => {
 					icon={<IconPlus />}
 					label={t('dialogs.passageEdit.visual.addIncludeBlock')}
 					onClick={addIncludeBlock}
+					variant="create"
+				/>
+				<IconButton
+					disabled={disabled}
+					icon={<IconPlus />}
+					label={t('dialogs.passageEdit.visual.addInteractionBlock')}
+					onClick={addInteractionBlock}
 					variant="create"
 				/>
 			</div>

@@ -230,6 +230,22 @@ function stripStateReferences(
 			};
 		}
 
+		// An interaction block is like a text block: its condition is stripped
+		// when the referenced state is deleted, but the block itself survives.
+		if (block.kind === 'interaction') {
+			return {
+				...block,
+				condition:
+					block.condition &&
+					isConditionCompatible(
+						block.condition,
+						statesById.get(block.condition.stateId)
+					)
+						? block.condition
+						: undefined
+			};
+		}
+
 		return {
 			...block,
 			branches: block.branches.map(branch => ({

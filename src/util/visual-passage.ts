@@ -14,6 +14,15 @@ export function visualStateVariable(stateId: string) {
 	return `$nrp_${stateId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 }
 
+/**
+ * Derives the hook id used by an interaction block's link and span from the
+ * block's stable editor id. SugarCube selectors only accept alphanumerics and
+ * underscores, so every other character is replaced with an underscore.
+ */
+export function interactionHookId(blockId: string) {
+	return `nrp_hook_${blockId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+}
+
 function sugarCubeValue(value: boolean | number | string | string[]) {
 	// JSON.stringify serializes string arrays as SugarCube array literals.
 	return JSON.stringify(value);
@@ -138,12 +147,30 @@ function compileBlocks(
 		}
 
 		if (block.kind === 'choice') {
+			const label = block.label.trim();
+
+			if (!label) {
+				return output;
+			}
+
+			// A special target navigates back/return instead of to a passage.
+			// It has no setter; the target passage id and actions are ignored
+			// while specialTarget is set.
+			if (block.specialTarget === 'back' || block.specialTarget === 'return') {
+				const link = `<<${block.specialTarget} ${JSON.stringify(label)}>>`;
+				const condition = block.condition
+					? compileCondition(block.condition, states)
+					: undefined;
+
+				output.push(condition ? `<<if ${condition}>>${link}<</if>>` : link);
+				return output;
+			}
+
 			const target = story.passages.find(
 				passage => passage.id === block.targetPassageId
 			);
-			const label = block.label.trim();
 
-			if (!target || !label) {
+			if (!target) {
 				return output;
 			}
 
@@ -157,6 +184,37 @@ function compileBlocks(
 				: undefined;
 
 			output.push(condition ? `<<if ${condition}>>${link}<</if>>` : link);
+			return output;
+		}
+
+		if (block.kind === 'interaction') {
+			const label = block.label.trim();
+
+			if (!label) {
+				return output;
+			}
+
+			// The hook id doubles as the span id and the SugarCube selector.
+			const hook = `#${interactionHookId(block.id)}`;
+			const quotedLabel = JSON.stringify(label);
+
+			// Remove starts with the content in place and clears it on click;
+			// reveal and append start empty and fill it on click.
+			let code: string;
+
+			if (block.operation === 'reveal') {
+				code = `<<link ${quotedLabel}>><<replace "${hook}">>${block.content}<</replace>><</link>><span id="${hook}"></span>`;
+			} else if (block.operation === 'append') {
+				code = `<<link ${quotedLabel}>><<append "${hook}">>${block.content}<</append>><</link>><span id="${hook}"></span>`;
+			} else {
+				code = `<<link ${quotedLabel}>><<remove "${hook}">><</link>><span id="${hook}">${block.content}</span>`;
+			}
+
+			const condition = block.condition
+				? compileCondition(block.condition, states)
+				: undefined;
+
+			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
 			return output;
 		}
 

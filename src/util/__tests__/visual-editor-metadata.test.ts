@@ -186,6 +186,98 @@ describe('visual editor HTML metadata', () => {
 		);
 	});
 
+	it('round trips interaction blocks verbatim and keeps choice special targets', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: false,
+			id: 'met-character',
+			name: 'Met character',
+			type: 'boolean' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Next';
+		story.passages[0].visual = {
+			blocks: [
+				{
+					content: 'A secret.',
+					id: 'int-1',
+					kind: 'interaction',
+					label: 'Reveal',
+					operation: 'reveal'
+				},
+				{
+					condition: {
+						operator: 'equals',
+						stateId: state.id,
+						value: true
+					},
+					content: 'Peek.',
+					id: 'int-2',
+					kind: 'interaction',
+					label: 'Remove',
+					operation: 'remove'
+				},
+				{
+					actions: [{operation: 'set', stateId: state.id, value: true}],
+					condition: {operator: 'equals', stateId: state.id, value: true},
+					id: 'choice-1',
+					kind: 'choice',
+					label: 'Go back',
+					specialTarget: 'back',
+					targetPassageId: story.passages[1].id
+				}
+			],
+			version: 2
+		};
+		story.passages[0].text = compileVisualPassage(
+			story.passages[0].visual,
+			story,
+			story.passages[0].id
+		);
+		const [restored] = importStories(
+			publishStory(story, fakeAppInfo(), {startOptional: true})
+		);
+		const restoredVisual = restored.passages[0]
+			.visual as VisualPassageContentV2;
+
+		// Interaction blocks hold no passage references: they survive the
+		// round trip verbatim, including their condition.
+		expect(restoredVisual.blocks[0]).toEqual({
+			content: 'A secret.',
+			id: 'int-1',
+			kind: 'interaction',
+			label: 'Reveal',
+			operation: 'reveal'
+		});
+		expect(restoredVisual.blocks[1]).toEqual({
+			condition: {operator: 'equals', stateId: state.id, value: true},
+			content: 'Peek.',
+			id: 'int-2',
+			kind: 'interaction',
+			label: 'Remove',
+			operation: 'remove'
+		});
+
+		// The choice keeps its specialTarget through the round trip while its
+		// passage target remaps by name to the imported passage id.
+		expect(restoredVisual.blocks[2]).toEqual({
+			actions: [{operation: 'set', stateId: state.id, value: true}],
+			condition: {operator: 'equals', stateId: state.id, value: true},
+			id: 'choice-1',
+			kind: 'choice',
+			label: 'Go back',
+			specialTarget: 'back',
+			targetPassageId: restored.passages[1].id
+		});
+
+		// The restored model serializes back to exactly the original metadata.
+		expect(serializeVisualEditorMetadata(restored)).toEqual(
+			serializeVisualEditorMetadata(story)
+		);
+	});
+
 	it('restores legacy v1 metadata by migrating it to v2', () => {
 		const story = fakeStory(2);
 		const state = {

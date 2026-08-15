@@ -8,7 +8,8 @@
 .passage-visual-editor section > label,
 .visual-passage-choice label,
 .visual-passage-variable label,
-.visual-passage-include label {
+.visual-passage-include label,
+.visual-passage-interaction label {
 	display: flex;
 	flex-direction: column;
 	font-weight: bold;
@@ -126,7 +127,8 @@
 
 .visual-passage-choice,
 .visual-passage-variable,
-.visual-passage-include {
+.visual-passage-include,
+.visual-passage-interaction {
 	background: var(--light-gray-translucent);
 	border: 1px solid var(--light-gray);
 	border-radius: var(--corner-round);
@@ -140,6 +142,8 @@
 .visual-passage-choice select,
 .visual-passage-variable select,
 .visual-passage-include select,
+.visual-passage-interaction input,
+.visual-passage-interaction select,
 .condition-editor input,
 .condition-editor select,
 .action-row input,

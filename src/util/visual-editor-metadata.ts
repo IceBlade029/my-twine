@@ -6,6 +6,7 @@ import {
 	VisualChoiceBlock,
 	VisualCondition,
 	VisualIncludeBlock,
+	VisualInteractionBlock,
 	VisualStoryContentV1,
 	VisualTextBlock,
 	VisualVariableBlock
@@ -40,6 +41,7 @@ interface SerializedBranch extends Omit<VisualBranch, 'blocks'> {
 type SerializedBlock =
 	| VisualTextBlock
 	| SerializedChoiceBlock
+	| VisualInteractionBlock
 	| VisualVariableBlock
 	| SerializedIncludeBlock
 	| SerializedBranchBlock;
@@ -95,6 +97,11 @@ function serializeBlockList(
 					story.passages.find(target => target.id === targetPassageId)
 						?.name ?? ''
 			};
+		}
+
+		// Interaction blocks hold no passage references: serialize verbatim.
+		if (block.kind === 'interaction') {
+			return block;
 		}
 
 		if (block.kind === 'branch') {
@@ -192,6 +199,11 @@ function restoreBlockList(
 					story.passages.find(target => target.name === targetPassageName)
 						?.id ?? ''
 			};
+		}
+
+		// Interaction blocks hold no passage references: restore verbatim.
+		if (block.kind === 'interaction') {
+			return block;
 		}
 
 		if (block.kind === 'branch') {

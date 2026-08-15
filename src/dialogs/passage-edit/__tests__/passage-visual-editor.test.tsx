@@ -183,6 +183,100 @@ describe('<PassageVisualEditor>', () => {
 		).not.toBeInTheDocument();
 	});
 
+	it('adds and completes an interaction block with an operation and content', () => {
+		const {story} = renderComponent();
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addInteractionBlock')
+		);
+
+		// The fresh block is visibly incomplete until a label is typed.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockIncomplete')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindInteraction')
+		).toBeInTheDocument();
+
+		// The operation select offers all three translated operations and the
+		// content textarea is present.
+		const operation = screen.getByLabelText(
+			'dialogs.passageEdit.visual.interactionOperation'
+		);
+
+		expect(operation).toHaveTextContent(
+			'dialogs.passageEdit.visual.operationReveal'
+		);
+		expect(operation).toHaveTextContent(
+			'dialogs.passageEdit.visual.operationAppend'
+		);
+		expect(operation).toHaveTextContent(
+			'dialogs.passageEdit.visual.interactionOperationRemove'
+		);
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.interactionContent')
+		).toBeInTheDocument();
+
+		// Typing a label completes the block; the generated source links to a
+		// hook id derived from the block id.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.interactionLabel'),
+			{target: {value: 'Reveal'}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.interactionContent'),
+			{target: {value: 'A secret.'}}
+		);
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('<<link "Reveal">><<replace "#nrp_hook_');
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
+		).not.toBeInTheDocument();
+	});
+
+	it('lets a choice target back or return instead of a passage', () => {
+		const {story} = renderComponent(setup => {
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						actions: [],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Go back',
+						targetPassageId: ''
+					}
+				],
+				version: 2
+			};
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+		const target = screen.getByLabelText(
+			'dialogs.passageEdit.visual.choiceTarget'
+		);
+
+		// Back and Return appear alongside the passage options.
+		expect(target).toHaveTextContent(
+			'dialogs.passageEdit.visual.targetBack'
+		);
+		expect(target).toHaveTextContent(
+			'dialogs.passageEdit.visual.targetReturn'
+		);
+
+		// Selecting them compiles to the back/return macros without a setter.
+		fireEvent.change(target, {target: {value: 'back'}});
+		expect(passageText()).toHaveTextContent('<<back "Go back">>');
+
+		fireEvent.change(target, {target: {value: 'return'}});
+		expect(passageText()).toHaveTextContent('<<return "Go back">>');
+
+		// Selecting a passage clears the special target again.
+		fireEvent.change(target, {target: {value: story.passages[1].id}});
+		expect(passageText()).toHaveTextContent('[[Go back->Hallway]]');
+	});
+
 	it('no longer manages story states and hints at the story states dialog when there are none', () => {
 		renderComponent();
 

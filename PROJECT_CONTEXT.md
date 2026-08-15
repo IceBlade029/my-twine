@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：新增「协作分工策略」（主模型计划/分派/验收，flash 经 workflow 执行重活）。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：新增「阶段 5：可视化编辑器重构」计划（节点树 + 人话条件 + 模拟器），并修订视觉验收流程（flash 只截图、主模型一次验收、不做全量截图）。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -152,6 +152,47 @@
 - `src/components/control/card-button.tsx`：为 `react-transition-group` 补充 `nodeRef`。
 - `public/locales/en-US.json` / `zh-CN.json`：补齐可视化编辑器文案。
 
+### 阶段 5：可视化编辑器重构（计划中，未开始）
+
+> 方向决策（用户拍板）：把「可视化段落编辑器」从「一段 body + 一组 choices」重构为**可视化节点树**，核心目标是解决「条件/动作不可见、作用域不明确」的问题。三项已锁定：**浅树**、**故事状态移到故事级面板**、**段落编辑器底部可折叠模拟器抽屉**。
+
+计划目标：
+- 段落内容改为有序**块列表**，唯一容器是「条件分支」，分支内可再嵌套。
+- 条件/动作一律**人话渲染**（见下方规则），不再用 `= ≠ > <` 裸符号。
+- 故事状态（全局变量）从段落编辑器移出，放到故事级「故事状态」面板。
+- 加「实时模拟器」：拨状态值，段落树实时高亮哪些块显示/隐藏。
+- 顺带修复上一轮验收发现的致命 bug（init 块被剥、Esc 丢字、空选择静默丢弃、撤销洪水）。
+
+数据模型 v2（`src/store/stories/stories.types.ts`）：
+- `VisualPassageContentV2 { version: 2; blocks: VisualBlock[] }`。
+- `VisualBlock` 三选一：`text`（text + condition?）、`choice`（label / targetPassageId / condition? / actions[]）、`branch`（branches[]）。
+- `VisualBranch { id; condition?; blocks[] }`；`condition === undefined` 表示「否则」分支，必须放最后且最多一个。
+- 条件/动作/状态字段（`VisualCondition` / `VisualStateAction` / `VisualStoryState`）保持不变。
+
+编译语义（重写 `src/util/visual-passage.ts` 的 `compileVisualPassage`）：
+- 按序遍历 blocks：text → 有 condition 则 `<<if c>>text<</if>>`；choice → `[[label->目标]][setter]`；branch → `<<if c1>>块1<<elseif c2>>块2<<else>>块N<</if>>`，子块递归。
+- **修 init bug**：编译时显式传入 owner 段落 id（不再用对象 `===` 找 owner）。
+- **空选择不静默**：label/目标为空的 choice 在 UI 标红、编译跳过并提示，而非悄悄消失。
+
+可见性规则：
+- 条件句模板：「当【状态名】是 / 不是 / 大于 / 小于 『值』时」，布尔显示「是/否」。
+- 动作句模板：「点击后：【状态名】设为 / 加 / 减 『值』」。
+- 每个块顶部是「门槛条」；模拟器判定隐藏的块变灰并标注隐藏原因。
+- 每次改动即存（防抖）+ 顶部「已保存」指示，Esc 关闭不再丢字。
+
+迁移 v1 → v2：
+- 旧 v1 段落自动转：body(+bodyCondition) → 1 个 text 块；每个 choice → 1 个 choice 块，内容零丢失。
+- 新段落默认 `{version: 2, blocks: [{kind: 'text', text: ''}]}`；metadata 恢复同步升版。
+
+验收标准（DoD）：
+1. `npm run lint` 与 `npx tsc --noEmit` 通过。
+2. v1→v2 迁移测试：导入旧数据行为等价、内容不丢。
+3. 编译测试：text/choice/branch 组合（含嵌套分支、否则分支、空选择跳过）输出正确。
+4. 回归修复：init 块不再被剥；Esc 不丢字；状态编辑不产生撤销洪水。
+5. 视觉验收：截图确认「节点树 + 人话条件 + 模拟器高亮」。
+
+未决事项（待用户确认后再做）：是否加「切换回 SugarCube 源码」入口；模拟器与「Play 试玩」的关系；块排序交互（拖拽 vs 上/下移按钮）。
+
 ## 5. 关键文件地图
 
 | 路径 | 作用 |
@@ -230,10 +271,11 @@ npm run e2e              # Playwright E2E
 - 主模型：`provider: "deepseek-official"`，`model: "deepseek-v4-pro"`
 - 在 workflow 的 `meta.phases` 或每个 `agent()` 的 opts 里显式固定 flash，不依赖 preset 默认，避免子代理落到其他模型。
 
-### 视觉验收闭环
+### 视觉验收闭环（2026-08 修订：截图与验收彻底分工，不做全量截图）
 
-- flash 用仓库内已安装的 Playwright 做 headless 截图，落盘到工作区（首次若缺 chromium 二进制，先 `npx playwright install chromium`）。
-- 主模型用 `view_image`（dsh-vision 插件）读取截图路径验收。
+- flash 只负责**截图**：按主模型在 brief 里点名的**少量关键状态（一般 5–8 张）**用 Playwright 截图落盘，返回 `{label, path}` 清单；**不做任何"好不好用"的判断**，也不做全量遍历截图（太慢）。
+- 主模型负责**视觉验收（仅一次）**：用 `view_image` 看 flash 交回的截图做判断与总结；不再由 flash 先解读一遍、主模型又复读一遍。
+- 首次若缺 chromium 二进制，先 `npx playwright install chromium`。
 
 ### 三条硬约定
 

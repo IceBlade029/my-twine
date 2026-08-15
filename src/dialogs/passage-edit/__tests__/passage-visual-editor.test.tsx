@@ -234,6 +234,36 @@ describe('<PassageVisualEditor>', () => {
 		expect(screen.queryByText('no-visual-editor')).not.toBeInTheDocument();
 		confirmSpy.mockRestore();
 	});
+
+	it('renders block shells with a data-depth attribute and a kind icon', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{
+						branches: [
+							{blocks: [{id: 't1', kind: 'text', text: 'A'}], id: 'b1'},
+							{blocks: [], id: 'b2'}
+						],
+						id: 'branch-1',
+						kind: 'branch'
+					}
+				],
+				version: 2
+			};
+		});
+
+		// Nested block lists increment the depth attribute.
+		const depths = [...container.querySelectorAll('.visual-block')].map(
+			element => element.getAttribute('data-depth')
+		);
+		expect(depths).toEqual(['0', '1']);
+
+		// Every block gate renders the kind icon next to the label.
+		const gates = container.querySelectorAll('.block-gate');
+
+		expect(gates[0].querySelector('svg')).toBeInTheDocument();
+		expect(gates[1].querySelector('svg')).toBeInTheDocument();
+	});
 });
 
 describe('human-readable conditions and actions', () => {

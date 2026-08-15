@@ -1,11 +1,16 @@
 import {v4 as uuid} from '@lukeed/uuid';
 import {
 	IconArrowDown,
+	IconArrowsRight,
 	IconArrowUp,
 	IconCode,
+	IconFileImport,
+	IconGitBranch,
 	IconPlus,
 	IconSourceCode,
-	IconTrash
+	IconTrash,
+	IconTypography,
+	IconVariable
 } from '@tabler/icons';
 import type {TFunction} from 'i18next';
 import * as React from 'react';
@@ -35,6 +40,39 @@ import {
 } from '../../util/visual-passage';
 import {defaultValueForState, StateValueInput} from '../story-states';
 import './passage-visual-editor.css';
+
+/** Metadata describing one block kind, used by the shared block shell. */
+interface BlockKindMeta {
+	icon: React.ComponentType;
+	labelKey: string;
+}
+
+/**
+ * Registry of per-kind block metadata. Future block kinds (phases 7/8/9)
+ * register their label and icon here instead of copy-pasting block headers.
+ */
+const blockKindMeta: Record<VisualBlock['kind'], BlockKindMeta> = {
+	text: {
+		icon: IconTypography,
+		labelKey: 'dialogs.passageEdit.visual.blockKindText'
+	},
+	choice: {
+		icon: IconArrowsRight,
+		labelKey: 'dialogs.passageEdit.visual.blockKindChoice'
+	},
+	branch: {
+		icon: IconGitBranch,
+		labelKey: 'dialogs.passageEdit.visual.blockKindBranch'
+	},
+	variable: {
+		icon: IconVariable,
+		labelKey: 'dialogs.passageEdit.visual.blockKindVariable'
+	},
+	include: {
+		icon: IconFileImport,
+		labelKey: 'dialogs.passageEdit.visual.blockKindInclude'
+	}
+};
 
 /** A value a state can hold during simulation; list states hold string[]. */
 type SimulatedValue = boolean | number | string | string[];
@@ -772,6 +810,7 @@ const IncludeEditor: React.FC<IncludeEditorProps> = props => {
 
 interface BranchEditorProps {
 	branch: VisualBranchBlock;
+	depth: number;
 	disabled?: boolean;
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
@@ -798,6 +837,7 @@ function normalizeBranches(branches: VisualBranch[]): VisualBranch[] {
 const BranchEditor: React.FC<BranchEditorProps> = props => {
 	const {
 		branch,
+		depth,
 		disabled,
 		onSaveFlushed,
 		onSavePending,
@@ -856,9 +896,6 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 
 	return (
 		<div className="visual-passage-choice visual-passage-branch">
-			<div className="branch-heading">
-				<strong>{t('dialogs.passageEdit.visual.blockKindBranch')}</strong>
-			</div>
 			{branch.branches.map((item, index) => {
 				const inactive = active !== undefined && active !== index;
 
@@ -901,6 +938,7 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 						</div>
 						<BlockList
 							blocks={item.blocks}
+							depth={depth + 1}
 							disabled={disabled}
 							onChange={blocks => updateBranch(index, {blocks})}
 							onSaveFlushed={onSaveFlushed}
@@ -919,8 +957,103 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 	);
 };
 
+interface BlockShellProps {
+	canMoveDown: boolean;
+	canMoveUp: boolean;
+	children: React.ReactNode;
+	condition?: VisualCondition;
+	depth: number;
+	disabled?: boolean;
+	hidden: boolean;
+	icon: React.ComponentType;
+	kindLabel: string;
+	onDelete: () => void;
+	onMoveDown: () => void;
+	onMoveUp: () => void;
+	states: VisualStoryState[];
+}
+
+/**
+ * Shared chrome around a visual block: the header with the kind icon and
+ * label, the condition gate, and the move/delete toolbar. Block kinds only
+ * supply their body editor; the shell keeps the layout identical for every
+ * kind. The depth prop prepares for a later visual tree overhaul.
+ */
+const BlockShell: React.FC<BlockShellProps> = props => {
+	const {
+		canMoveDown,
+		canMoveUp,
+		children,
+		condition,
+		depth,
+		disabled,
+		hidden,
+		icon,
+		kindLabel,
+		onDelete,
+		onMoveDown,
+		onMoveUp,
+		states
+	} = props;
+	const {t} = useTranslation();
+	const Icon = icon;
+
+	return (
+		<div className="visual-block" data-depth={depth}>
+			<div className="block-header">
+				<div className="block-gate">
+					<Icon />
+					<span className="block-kind">{kindLabel}</span>
+					{condition && !hidden && (
+						<span className="block-condition-summary">
+							{conditionSentenceText(t, condition, states)}
+						</span>
+					)}
+					{hidden && condition && (
+						<span className="hidden-badge">
+							{hiddenBecauseText(t, condition, states)}
+						</span>
+					)}
+				</div>
+				<div className="block-toolbar">
+					<IconButton
+						disabled={disabled || !canMoveUp}
+						icon={<IconArrowUp />}
+						iconOnly
+						label="Move up"
+						onClick={onMoveUp}
+					/>
+					<IconButton
+						disabled={disabled || !canMoveDown}
+						icon={<IconArrowDown />}
+						iconOnly
+						label="Move down"
+						onClick={onMoveDown}
+					/>
+					<IconButton
+						disabled={disabled}
+						icon={<IconTrash />}
+						iconOnly
+						label="Delete block"
+						onClick={onDelete}
+						variant="danger"
+					/>
+				</div>
+			</div>
+			<div
+				className={
+					hidden ? 'visual-block-body is-hidden' : 'visual-block-body'
+				}
+			>
+				{children}
+			</div>
+		</div>
+	);
+};
+
 interface BlockListProps {
 	blocks: VisualBlock[];
+	depth?: number;
 	disabled?: boolean;
 	onChange: (blocks: VisualBlock[]) => void;
 	onSaveFlushed: () => void;
@@ -933,6 +1066,7 @@ interface BlockListProps {
 const BlockList: React.FC<BlockListProps> = props => {
 	const {
 		blocks,
+		depth = 0,
 		disabled,
 		onChange,
 		onSaveFlushed,
@@ -1006,144 +1140,95 @@ const BlockList: React.FC<BlockListProps> = props => {
 		]);
 	}
 
-	function blockKindLabel(block: VisualBlock) {
-		if (block.kind === 'text') {
-			return t('dialogs.passageEdit.visual.blockKindText');
-		}
-
-		if (block.kind === 'choice') {
-			return t('dialogs.passageEdit.visual.blockKindChoice');
-		}
-
-		if (block.kind === 'variable') {
-			return t('dialogs.passageEdit.visual.blockKindVariable');
-		}
-
-		if (block.kind === 'include') {
-			return t('dialogs.passageEdit.visual.blockKindInclude');
-		}
-
-		return t('dialogs.passageEdit.visual.blockKindBranch');
-	}
-
 	return (
 		<div className="visual-block-list">
 			{blocks.map((block, index) => {
 				const choiceIndex = blocks
 					.slice(0, index)
 					.filter(item => item.kind === 'choice').length;
+				const meta = blockKindMeta[block.kind];
 				const condition = 'condition' in block ? block.condition : undefined;
 				const hidden = blockIsHidden(condition, states, simulated);
 
 				return (
-					<div className="visual-block" key={block.id}>
-						<div className="block-header">
-							<div className="block-gate">
-								<span className="block-kind">{blockKindLabel(block)}</span>
-								{condition && !hidden && (
-									<span className="block-condition-summary">
-										{conditionSentenceText(t, condition, states)}
-									</span>
-								)}
-								{hidden && condition && (
-									<span className="hidden-badge">
-										{hiddenBecauseText(t, condition, states)}
-									</span>
-								)}
-							</div>
-							<div className="block-toolbar">
-								<IconButton
-									disabled={disabled || index === 0}
-									icon={<IconArrowUp />}
-									iconOnly
-									label="Move up"
-									onClick={() => moveBlock(index, -1)}
-								/>
-								<IconButton
-									disabled={disabled || index === blocks.length - 1}
-									icon={<IconArrowDown />}
-									iconOnly
-									label="Move down"
-									onClick={() => moveBlock(index, 1)}
-								/>
-								<IconButton
-									disabled={disabled}
-									icon={<IconTrash />}
-									iconOnly
-									label="Delete block"
-									onClick={() => deleteBlock(index)}
-									variant="danger"
-								/>
-							</div>
-						</div>
-						<div
-							className={
-								hidden ? 'visual-block-body is-hidden' : 'visual-block-body'
-							}
-						>
-							{block.kind === 'text' && (
-								<TextBlockEditor
-									block={block}
-									disabled={disabled}
-									onSaveFlushed={onSaveFlushed}
-									onSavePending={onSavePending}
-									onUpdate={props =>
-										updateBlock(block.id, {...block, ...props})
-									}
-									states={states}
-								/>
-							)}
-							{block.kind === 'choice' && (
-								<ChoiceEditor
-									choice={block}
-									disabled={disabled}
-									index={choiceIndex}
-									onSaveFlushed={onSaveFlushed}
-									onSavePending={onSavePending}
-									onUpdate={props =>
-										updateBlock(block.id, {...block, ...props})
-									}
-									states={states}
-									story={story}
-								/>
-							)}
-							{block.kind === 'branch' && (
-								<BranchEditor
-									branch={block}
-									disabled={disabled}
-									onSaveFlushed={onSaveFlushed}
-									onSavePending={onSavePending}
-									onUpdate={props =>
-										updateBlock(block.id, {...block, ...props})
-									}
-									simulated={simulated}
-									states={states}
-									story={story}
-								/>
-							)}
-							{block.kind === 'variable' && (
-								<VariableEditor
-									block={block}
-									disabled={disabled}
-									onUpdate={props =>
-										updateBlock(block.id, {...block, ...props})
-									}
-									states={states}
-								/>
-							)}
-							{block.kind === 'include' && (
-								<IncludeEditor
-									block={block}
-									disabled={disabled}
-									onUpdate={props =>
-										updateBlock(block.id, {...block, ...props})
-									}
-									states={states}
-									story={story}
-								/>
-							)}
-						</div>
-					</div>
+					<BlockShell
+						canMoveDown={index < blocks.length - 1}
+						canMoveUp={index > 0}
+						condition={condition}
+						depth={depth}
+						disabled={disabled}
+						hidden={hidden}
+						icon={meta.icon}
+						key={block.id}
+						kindLabel={t(meta.labelKey)}
+						onDelete={() => deleteBlock(index)}
+						onMoveDown={() => moveBlock(index, 1)}
+						onMoveUp={() => moveBlock(index, -1)}
+						states={states}
+					>
+						{block.kind === 'text' && (
+							<TextBlockEditor
+								block={block}
+								disabled={disabled}
+								onSaveFlushed={onSaveFlushed}
+								onSavePending={onSavePending}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+							/>
+						)}
+						{block.kind === 'choice' && (
+							<ChoiceEditor
+								choice={block}
+								disabled={disabled}
+								index={choiceIndex}
+								onSaveFlushed={onSaveFlushed}
+								onSavePending={onSavePending}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+								story={story}
+							/>
+						)}
+						{block.kind === 'branch' && (
+							<BranchEditor
+								branch={block}
+								depth={depth}
+								disabled={disabled}
+								onSaveFlushed={onSaveFlushed}
+								onSavePending={onSavePending}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								simulated={simulated}
+								states={states}
+								story={story}
+							/>
+						)}
+						{block.kind === 'variable' && (
+							<VariableEditor
+								block={block}
+								disabled={disabled}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+							/>
+						)}
+						{block.kind === 'include' && (
+							<IncludeEditor
+								block={block}
+								disabled={disabled}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+								story={story}
+							/>
+						)}
+					</BlockShell>
 				);
 			})}
 			<div className="block-add-buttons">

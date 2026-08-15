@@ -27,7 +27,12 @@ export const CardButton: React.FC<CardButtonProps> = props => {
 		null
 	);
 	const [cardEl, setCardEl] = React.useState<HTMLDivElement | null>(null);
+	const cardNodeRef = React.useRef<HTMLDivElement | null>(null);
 	const {styles, attributes} = usePopper(buttonEl, cardEl, {strategy: 'fixed'});
+	const setCardRefs = React.useCallback((element: HTMLDivElement | null) => {
+		cardNodeRef.current = element;
+		setCardEl(element);
+	}, []);
 
 	function filterEventsOutsideFocusTrap(event: MouseEvent | TouchEvent) {
 		const narrowedTarget = event.target as HTMLElement;
@@ -57,6 +62,7 @@ export const CardButton: React.FC<CardButtonProps> = props => {
 				classNames="fade-out"
 				in={open}
 				mountOnEnter
+				nodeRef={cardNodeRef}
 				timeout={200}
 				unmountOnExit
 			>
@@ -69,7 +75,7 @@ export const CardButton: React.FC<CardButtonProps> = props => {
 					<div
 						aria-label={ariaLabel}
 						className="card-button-card"
-						ref={setCardEl}
+						ref={setCardRefs}
 						role="dialog"
 						style={styles.popper}
 						{...attributes.popper}

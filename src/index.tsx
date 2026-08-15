@@ -1,11 +1,13 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 import {App} from './app';
-import './util/i18n';
+import {i18nReady} from './util/i18n';
 
-ReactDOM.render(
-	<React.StrictMode>
-		<App />
-	</React.StrictMode>,
-	document.getElementById('root')
-);
+i18nReady.then(() => {
+	ReactDOM.render(
+		<React.StrictMode>
+			<App />
+		</React.StrictMode>,
+		document.getElementById('root')
+	);
+});

@@ -1,10 +1,6 @@
 import classNames from 'classnames';
 import * as React from 'react';
-import {
-	BackgroundDialogCard,
-	DialogCard
-} from '../../components/container/dialog-card';
-import {DialogStack} from '../../components/container/dialog-card/dialog-stack';
+import {DialogCard} from '../../components/container/dialog-card';
 import {TagGrid} from '../../components/tag';
 import {VisibleWhitespace} from '../../components/visible-whitespace';
 import {
@@ -13,7 +9,6 @@ import {
 	useStoriesContext
 } from '../../store/stories';
 import {
-	addPassageEditors,
 	removePassageEditors,
 	useDialogsContext
 } from '../context';
@@ -33,93 +28,24 @@ const InnerPassageEditStack: React.FC<PassageEditStackProps> = props => {
 	const {dispatch} = useDialogsContext();
 	const {stories} = useStoriesContext();
 	const storyTagColors = storyWithId(stories, storyId).tagColors;
-	const passageInfo = passageIds.map(passageId => {
-		const passage = passageWithId(stories, storyId, passageId);
-
-		return {name: passage.name, tags: passage.tags};
-	});
-	const style: React.CSSProperties = {};
-
-	if (managementProps.collapsed) {
-		style.height = `calc(var(--control-height) * ${passageIds.length})`;
-
-		if (managementProps.maximized) {
-			style.bottom = 0;
-			style.position = 'absolute';
-		}
-	}
-
-	function handleClose(
-		passageId: string,
-		event?: React.KeyboardEvent | React.MouseEvent
-	) {
-		if (event?.shiftKey) {
-			onClose(event);
-		} else {
-			dispatch(removePassageEditors([passageId]));
-		}
-	}
+	const passage = passageWithId(stories, storyId, passageIds[0]);
 
 	return (
-		<div
-			className={classNames('passage-edit-stack', {
-				collapsed: managementProps.collapsed
-			})}
-			style={style}
-		>
-			<DialogStack childKeys={passageIds}>
-				{passageIds.map((passageId, index) => {
-					if (index !== 0) {
-						return (
-							<BackgroundDialogCard
-								{...managementProps}
-								headerDisplayLabel={
-									<>
-										<TagGrid
-											tags={passageInfo[index].tags}
-											tagColors={storyTagColors}
-										/>
-										<VisibleWhitespace value={passageInfo[index].name} />
-									</>
-								}
-								headerLabel={passageInfo[index].name}
-								key={passageId}
-								onClose={event => handleClose(passageId, event)}
-								onRaise={() =>
-									dispatch(addPassageEditors(storyId, [passageId]))
-								}
-							>
-								<PassageEditContents
-									disabled
-									passageId={passageId}
-									storyId={storyId}
-								/>
-							</BackgroundDialogCard>
-						);
-					}
-
-					return (
-						<DialogCard
-							{...managementProps}
-							headerDisplayLabel={
-								<>
-									<TagGrid
-										tags={passageInfo[index].tags}
-										tagColors={storyTagColors}
-									/>
-									<VisibleWhitespace value={passageInfo[index].name} />
-								</>
-							}
-							headerLabel={passageInfo[index].name}
-							key={passageId}
-							maximizable
-							onClose={event => handleClose(passageId, event)}
-						>
-							<PassageEditContents passageId={passageId} storyId={storyId} />
-						</DialogCard>
-					);
-				})}
-			</DialogStack>
+		<div className={classNames('passage-edit-stack')}>
+			<DialogCard
+				{...managementProps}
+				fixedSize
+				headerDisplayLabel={
+					<>
+						<TagGrid tags={passage.tags} tagColors={storyTagColors} />
+						<VisibleWhitespace value={passage.name} />
+					</>
+				}
+				headerLabel={passage.name}
+				onClose={() => dispatch(removePassageEditors([passage.id]))}
+			>
+				<PassageEditContents passageId={passage.id} storyId={storyId} />
+			</DialogCard>
 		</div>
 	);
 };
@@ -156,3 +82,5 @@ export const PassageEditStack: React.FC<PassageEditStackProps> = props => {
 
 	return <InnerPassageEditStack {...props} />;
 };
+
+PassageEditStack.displayName = 'PassageEditStack';

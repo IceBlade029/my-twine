@@ -18,11 +18,18 @@ export const Dialogs: React.FC = () => {
 	const {dispatch, dialogs} = useDialogsContext();
 
 	const hasUnmaximized = dialogs.some(dialog => !dialog.maximized);
+	const containsPassageEditor = dialogs.some(
+		dialog => dialog.component.displayName === 'PassageEditStack'
+	);
 	const containerStyle: React.CSSProperties = {
 		paddingLeft: `calc(100% - (${prefs.dialogWidth}px + 2 * (var(--grid-size))))`,
 		marginBottom: height,
 		marginRight: width
 	};
+
+	if (containsPassageEditor) {
+		containerStyle.paddingLeft = 0;
+	}
 	const maximizedStyle: React.CSSProperties = {
 		marginRight: hasUnmaximized
 			? `calc(${prefs.dialogWidth}px + var(--grid-size))`
@@ -30,7 +37,10 @@ export const Dialogs: React.FC = () => {
 	};
 
 	return (
-		<div className="dialogs" style={containerStyle}>
+		<div
+			className={`dialogs${containsPassageEditor ? ' passage-editor-open' : ''}`}
+			style={containerStyle}
+		>
 			<TransitionGroup component={null}>
 				{dialogs.map((dialog, index) => {
 					const managementProps = {

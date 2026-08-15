@@ -22,6 +22,7 @@ describe('createUntitledPassage', () => {
 				name: defs.name,
 				story: story.id,
 				top: 100 - defs.height / 2,
+				visual: {body: '', choices: [], version: 1},
 				width: defs.width
 			},
 			storyId: story.id

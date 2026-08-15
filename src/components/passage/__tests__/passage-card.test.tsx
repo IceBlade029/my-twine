@@ -66,6 +66,17 @@ describe('<PassageCard>', () => {
 		expect(screen.getByText(passage.text)).toBeInTheDocument();
 	});
 
+	it('displays visual body text instead of generated source', () => {
+		const passage = fakePassage({
+			text: '<<set $generated = true>>',
+			visual: {body: 'Author-facing text', choices: [], version: 1}
+		});
+
+		renderComponent({passage});
+		expect(screen.getByText('Author-facing text')).toBeInTheDocument();
+		expect(screen.queryByText(passage.text)).not.toBeInTheDocument();
+	});
+
 	it("gives it an 'empty' CSS class if the passage is empty", () => {
 		passageIsEmptyMock.mockReturnValue(true);
 		renderComponent({passage: fakePassage()});

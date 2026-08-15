@@ -50,8 +50,10 @@ export const PassageCard: React.FC<PassageCardProps> = React.memo(props => {
 	);
 	const container = React.useRef<HTMLDivElement>(null);
 	const excerpt = React.useMemo(() => {
-		if (passage.text.length > 0) {
-			return passage.text.substring(0, excerptLength);
+		const displayText = passage.visual?.body ?? passage.text;
+
+		if (displayText.length > 0) {
+			return displayText.substring(0, excerptLength);
 		}
 
 		return (
@@ -63,7 +65,7 @@ export const PassageCard: React.FC<PassageCardProps> = React.memo(props => {
 				)}
 			</span>
 		);
-	}, [passage.text, t]);
+	}, [passage.text, passage.visual?.body, t]);
 	const style = React.useMemo(
 		() => ({
 			height: passage.height,

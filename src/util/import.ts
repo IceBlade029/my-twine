@@ -8,6 +8,11 @@
 import {v4 as uuid} from '@lukeed/uuid';
 import defaults from 'lodash/defaults';
 import {passageDefaults, storyDefaults, Passage, Story} from '../store/stories';
+import {
+	parseVisualEditorMetadata,
+	restoreVisualEditorMetadata,
+	visualEditorMetadataSelector
+} from './visual-editor-metadata';
 
 /**
  * An imported story, which may contain incomplete or malformed data.
@@ -155,6 +160,14 @@ export function importStories(
 		story.passages = story.passages.map(passage =>
 			defaults(passage, passageDefaults(), {story: story.id})
 		);
+
+		const metadata = parseVisualEditorMetadata(
+			storyEl.querySelector(visualEditorMetadataSelector)?.textContent ?? null
+		);
+
+		if (metadata) {
+			restoreVisualEditorMetadata(story, metadata);
+		}
 
 		return story;
 	});

@@ -17,7 +17,7 @@ describe('addPassageEditors', () => {
 		]);
 	});
 
-	it('dispatches an action to add passages to the top of an existing stack', () => {
+	it('dispatches an action to replace the passage in an existing editor', () => {
 		const dispatch = jest.fn();
 
 		addPassageEditors('test-story-id', ['test-passage-id'])(dispatch, () => [
@@ -34,7 +34,7 @@ describe('addPassageEditors', () => {
 				{
 					index: 0,
 					props: {
-						passageIds: ['test-passage-id', 'existing-passage-id'],
+						passageIds: ['test-passage-id'],
 						storyId: 'test-story-id'
 					},
 					type: 'setDialogProps'
@@ -43,7 +43,7 @@ describe('addPassageEditors', () => {
 		]);
 	});
 
-	it('dispatches an action to brings existing passages to the top of the stack', () => {
+	it('keeps only the requested passage when it is already in the editor', () => {
 		const dispatch = jest.fn();
 
 		addPassageEditors('test-story-id', ['test-passage-id'])(dispatch, () => [
@@ -63,7 +63,7 @@ describe('addPassageEditors', () => {
 				{
 					index: 0,
 					props: {
-						passageIds: ['test-passage-id', 'existing-passage-id'],
+						passageIds: ['test-passage-id'],
 						storyId: 'test-story-id'
 					},
 					type: 'setDialogProps'
@@ -72,14 +72,13 @@ describe('addPassageEditors', () => {
 		]);
 	});
 
-	it('clamps the size of the editor stack to the limit specified', () => {
+	it('uses only the first requested passage', () => {
 		const dispatch = jest.fn();
 
-		addPassageEditors(
-			'test-story-id',
-			['test-passage-id'],
-			3
-		)(dispatch, () => [
+		addPassageEditors('test-story-id', [
+			'test-passage-id',
+			'another-passage-id'
+		])(dispatch, () => [
 			{
 				collapsed: false,
 				component: PassageEditStack,
@@ -100,11 +99,7 @@ describe('addPassageEditors', () => {
 				{
 					index: 0,
 					props: {
-						passageIds: [
-							'test-passage-id',
-							'existing-passage-id-1',
-							'existing-passage-id-2'
-						],
+						passageIds: ['test-passage-id'],
 						storyId: 'test-story-id'
 					},
 					type: 'setDialogProps'

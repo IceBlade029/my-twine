@@ -2,6 +2,7 @@ import {passageDefaults} from '../defaults';
 import {CreatePassageAction, Story} from '../stories.types';
 import {rectsIntersect} from '../../../util/geometry';
 import {unusedName} from '../../../util/unused-name';
+import {emptyVisualPassage} from '../../../util/visual-passage';
 
 /**
  * Creates a new, untitled passage centered at a point in the story. This
@@ -82,7 +83,8 @@ export function createUntitledPassage(
 		props: {
 			...bounds,
 			story: story.id,
-			name: passageName
+			name: passageName,
+			visual: emptyVisualPassage()
 		}
 	};
 }

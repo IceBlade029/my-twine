@@ -13,6 +13,8 @@ import {PassageToolbar} from './passage-toolbar';
 import {StoryFormatToolbar} from './story-format-toolbar';
 import './passage-edit-contents.css';
 import {usePrefsContext} from '../../store/prefs';
+import {passageUsesVisualEditor} from '../../util/visual-passage';
+import {PassageVisualEditor} from './passage-visual-editor';
 
 export interface PassageEditContentsProps {
 	disabled?: boolean;
@@ -86,6 +88,24 @@ export const PassageEditContents: React.FC<
 	if (editorCrashed) {
 		return (
 			<ErrorMessage>{t('dialogs.passageEdit.editorCrashed')}</ErrorMessage>
+		);
+	}
+
+	if (passageUsesVisualEditor(passage)) {
+		return (
+			<div className="passage-edit-contents" aria-hidden={disabled}>
+				<PassageToolbar
+					disabled={disabled}
+					passage={passage}
+					story={story}
+					useCodeMirror={false}
+				/>
+				<PassageVisualEditor
+					disabled={disabled}
+					passage={passage}
+					story={story}
+				/>
+			</div>
 		);
 	}
 

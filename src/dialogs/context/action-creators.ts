@@ -8,8 +8,7 @@ import {PassageEditStack} from '../passage-edit';
  */
 export function addPassageEditors(
 	storyId: string,
-	passageIds: string[],
-	editorLimit = 6
+	passageIds: string[]
 ): Thunk<DialogsState, DialogsAction> {
 	return (dispatch, state) => {
 		const currentState = state();
@@ -20,41 +19,21 @@ export function addPassageEditors(
 		if (passageEditStackIndex !== -1) {
 			// Put the passage IDs at the start, ensuring there are no duplicates.
 
-			const existing: string[] =
-				currentState[passageEditStackIndex].props?.passageIds ?? [];
-			const updatedPassageIds = [
-				...passageIds,
-				...existing.filter(id => !passageIds.includes(id))
-			];
-
-			// Clamp the array length to the editor limit.
-
-			if (updatedPassageIds.length > editorLimit) {
-				updatedPassageIds.length = editorLimit;
-			}
-
 			dispatch({
 				type: 'setDialogProps',
 				index: passageEditStackIndex,
 				props: {
 					...currentState[passageEditStackIndex].props,
-					passageIds: updatedPassageIds
+					passageIds: passageIds.slice(0, 1)
 				}
 			});
 		} else {
-			// Add a new stack, clamping length.
-			const clampedPassageIds = [...passageIds];
-
-			if (clampedPassageIds.length > editorLimit) {
-				clampedPassageIds.length = editorLimit;
-			}
-
 			dispatch({
 				type: 'addDialog',
 				component: PassageEditStack,
 				props: {
 					storyId,
-					passageIds: clampedPassageIds
+					passageIds: passageIds.slice(0, 1)
 				}
 			});
 		}

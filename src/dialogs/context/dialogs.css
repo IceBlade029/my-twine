@@ -46,3 +46,21 @@
 	right: 0;
 	bottom: 0;
 }
+
+.story-edit-route ~ .dialogs.passage-editor-open {
+	bottom: 0;
+	left: auto;
+	right: 0;
+	top: calc(2 * var(--control-height));
+	width: min(34rem, 42vw);
+}
+
+body:has(.dialogs.passage-editor-open) .story-edit-route .main-content {
+	right: min(34rem, 42vw);
+}
+
+.story-edit-route ~ .dialogs .passage-edit-stack .dialog-card,
+.story-edit-route ~ .dialogs .passage-edit-stack .card {
+	border-radius: 0;
+	height: 100%;
+}

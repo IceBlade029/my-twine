@@ -4,7 +4,7 @@ import {initReactI18next} from 'react-i18next';
 
 export const i18n = i18next.createInstance();
 
-i18n
+export const i18nReady = i18n
 	.use(HttpBackend)
 	.use(initReactI18next)
 	.init({

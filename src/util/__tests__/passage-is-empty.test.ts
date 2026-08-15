@@ -17,6 +17,22 @@ describe('passageIsEmpty', () => {
 		);
 	});
 
+	it('uses authored visual content instead of generated source', () => {
+		expect(
+			passageIsEmpty({
+				...passage,
+				text: '<<set $generated = true>>',
+				visual: {body: '', choices: [], version: 1}
+			})
+		).toBe(true);
+		expect(
+			passageIsEmpty({
+				...passage,
+				visual: {body: 'Visible text', choices: [], version: 1}
+			})
+		).toBe(false);
+	});
+
 	it('returns false if the passage has any tags', () => {
 		expect(passageIsEmpty({...passage, tags: [faker.lorem.words(1)]})).toBe(
 			false

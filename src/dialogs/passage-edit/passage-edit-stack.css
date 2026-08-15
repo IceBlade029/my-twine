@@ -1,15 +1,24 @@
 .passage-edit-stack {
-	flex-grow: 1;
+	height: 100%;
 	width: 100%;
+}
+
+.passage-edit-stack .passage-edit-contents {
+	flex: 1 1 auto;
+	height: auto;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.passage-edit-stack .passage-visual-editor {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
 }
 
 .maximized .passage-edit-stack {
 	height: 100%;
-}
-
-.passage-edit-stack.collapsed {
-	flex-grow: 0;
-	/* Height is calculated in the component. */
 }
 
 .passage-edit-stack .dialog-card-header .tag-grid {

@@ -1,0 +1,95 @@
+.passage-visual-editor {
+	display: flex;
+	flex-direction: column;
+	gap: calc(2 * var(--grid-size));
+	padding: calc(2 * var(--grid-size));
+}
+
+.passage-visual-editor section > label,
+.visual-passage-choice label {
+	display: flex;
+	flex-direction: column;
+	font-weight: bold;
+	gap: var(--grid-size);
+}
+
+.passage-visual-editor textarea {
+	box-sizing: border-box;
+	font: inherit;
+	line-height: 1.5;
+	min-height: 12rem;
+	padding: var(--grid-size);
+	resize: vertical;
+	width: 100%;
+}
+
+.section-heading,
+.choice-heading {
+	align-items: center;
+	display: flex;
+	justify-content: space-between;
+}
+
+.section-heading h3 {
+	margin: 0;
+}
+
+.visual-passage-choices {
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+}
+
+.visual-passage-choice {
+	background: var(--light-gray-translucent);
+	border: 1px solid var(--light-gray);
+	border-radius: var(--corner-round);
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+	padding: var(--grid-size);
+}
+
+.visual-passage-choice input,
+.visual-passage-choice select,
+.state-row input,
+.state-row select,
+.condition-editor input,
+.condition-editor select,
+.action-row input,
+.action-row select {
+	box-sizing: border-box;
+	font: inherit;
+	min-height: var(--control-height);
+	padding: var(--control-inner-padding);
+	width: 100%;
+}
+
+.visual-story-states,
+.choice-actions,
+.body-condition {
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+}
+
+.state-row,
+.condition-editor,
+.action-row {
+	display: grid;
+	gap: var(--grid-size);
+	grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.5fr) auto;
+}
+
+.empty-state {
+	color: var(--gray);
+	margin: 0;
+}
+
+.generated-source pre {
+	background: var(--dark-gray);
+	color: var(--off-white);
+	overflow: auto;
+	padding: var(--grid-size);
+	white-space: pre-wrap;
+}

@@ -68,7 +68,7 @@ describe('<PassageEditStack>', () => {
 		};
 	}
 
-	it('displays a dialog card for every passage', () => {
+	it('displays a docked editor for only the first requested passage', () => {
 		const story = fakeStory(2);
 
 		renderComponent({stories: [story]});
@@ -78,19 +78,19 @@ describe('<PassageEditStack>', () => {
 			)
 		).toBeInTheDocument();
 		expect(
-			screen.getByTestId(
+			screen.queryByTestId(
 				`mock-passage-edit-contents-${story.id}-${story.passages[1].id}`
 			)
-		).toBeInTheDocument();
+		).not.toBeInTheDocument();
 		expect(
 			screen.getByRole('heading', {name: story.passages[0].name})
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole('heading', {name: story.passages[1].name})
-		).toBeInTheDocument();
+			screen.queryByRole('heading', {name: story.passages[1].name})
+		).not.toBeInTheDocument();
 	});
 
-	it('displays a tag grid for each passage', () => {
+	it('displays a tag grid for the active passage', () => {
 		const story = fakeStory(2);
 
 		story.passages[0].tags = ['tag-1'];
@@ -100,12 +100,8 @@ describe('<PassageEditStack>', () => {
 
 		const tagGrids = screen.getAllByTestId('mock-tag-grid');
 
-		expect(tagGrids).toHaveLength(2);
-
-		// Order is reversed here because of rendering order.
-
-		expect(tagGrids[0]).toHaveTextContent('tag-2 tag-3');
-		expect(tagGrids[1]).toHaveTextContent('tag-1');
+		expect(tagGrids).toHaveLength(1);
+		expect(tagGrids[0]).toHaveTextContent('tag-1');
 	});
 
 	it('makes whitespace visible in passage names in the dialog cards', () => {
@@ -115,12 +111,8 @@ describe('<PassageEditStack>', () => {
 
 		const whitespace = screen.getAllByTestId('mock-visible-whitespace');
 
-		expect(whitespace).toHaveLength(2);
-
-		// Order is reversed here because of rendering order.
-
-		expect(whitespace[0]).toHaveTextContent(story.passages[1].name);
-		expect(whitespace[1]).toHaveTextContent(story.passages[0].name);
+		expect(whitespace).toHaveLength(1);
+		expect(whitespace[0]).toHaveTextContent(story.passages[0].name);
 	});
 
 	it('calls onChangeProps if any passages do not exist', () => {
@@ -147,49 +139,6 @@ describe('<PassageEditStack>', () => {
 
 	describe('When a passage editor is closed', () => {
 		// Would be cleaner to use a real dialog context in these...
-
-		it('calls onChangeProps if there are still passages left', () => {
-			const story = fakeStory(2);
-			const dialogs = [
-				{
-					collapsed: false,
-					component: PassageEditStack,
-					highlighted: false,
-					maximized: false,
-					props: {
-						passageIds: [story.passages[0].id, story.passages[1].id],
-						storyId: story.id
-					}
-				}
-			];
-			const dispatch = jest.fn();
-			const innerDispatch = jest.fn();
-
-			renderComponent({stories: [story]}, {dialogs, dispatch});
-			expect(dispatch).not.toBeCalled();
-			fireEvent.click(screen.getAllByLabelText('common.close')[0]);
-			dispatch.mock.calls[0][0](innerDispatch, () => dialogs);
-			expect(innerDispatch.mock.calls).toEqual([
-				[
-					{
-						index: 0,
-						props: {passageIds: [story.passages[0].id], storyId: story.id},
-						type: 'setDialogProps'
-					}
-				]
-			]);
-		});
-
-		it('calls onClose if the shift key is held when closing a passage editor', () => {
-			const story = fakeStory(2);
-			const {onClose} = renderComponent({stories: [story]});
-
-			expect(onClose).not.toBeCalled();
-			fireEvent.click(screen.getAllByLabelText('common.close')[0], {
-				shiftKey: true
-			});
-			expect(onClose).toBeCalledTimes(1);
-		});
 
 		it('dispatches an action to close the stack if that was the last passage editor', () => {
 			const story = fakeStory(1);

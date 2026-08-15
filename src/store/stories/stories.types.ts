@@ -43,6 +43,11 @@ export interface Passage {
 	 */
 	text: string;
 	/**
+	 * Structured authoring data used by the visual passage editor. If absent,
+	 * the passage is edited as SugarCube source.
+	 */
+	visual?: VisualPassageContentV1;
+	/**
 	 * Top (e.g. Y) position of the top-left corner of the passage in pixels.
 	 */
 	top: number;
@@ -50,6 +55,51 @@ export interface Passage {
 	 * Width of the passage in pixels.
 	 */
 	width: number;
+}
+
+export interface VisualPassageChoice {
+	/** Stable editor-only identifier. */
+	id: string;
+	/** Text shown to the player. */
+	label: string;
+	/** Target passage ID. An empty value means the choice is incomplete. */
+	targetPassageId: string;
+	condition?: VisualCondition;
+	actions: VisualStateAction[];
+}
+
+export interface VisualPassageContentV1 {
+	/** Plain passage body. SugarCube source is generated from this data. */
+	body: string;
+	bodyCondition?: VisualCondition;
+	choices: VisualPassageChoice[];
+	version: 1;
+}
+
+export type VisualStateType = 'boolean' | 'number' | 'text';
+
+export interface VisualStoryState {
+	defaultValue: boolean | number | string;
+	id: string;
+	name: string;
+	type: VisualStateType;
+}
+
+export interface VisualStoryContentV1 {
+	states: VisualStoryState[];
+	version: 1;
+}
+
+export interface VisualCondition {
+	operator: 'equals' | 'notEquals' | 'greaterThan' | 'lessThan';
+	stateId: string;
+	value: boolean | number | string;
+}
+
+export interface VisualStateAction {
+	operation: 'set' | 'increase' | 'decrease';
+	stateId: string;
+	value: boolean | number | string;
 }
 
 export interface Story {
@@ -113,6 +163,8 @@ export interface Story {
 	 * Zoom level the story is displayed at.
 	 */
 	zoom: number;
+	/** Story-level data for visual authoring. */
+	visual?: VisualStoryContentV1;
 }
 
 export type StoriesState = Story[];

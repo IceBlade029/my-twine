@@ -2,6 +2,7 @@ import escape from 'lodash/escape';
 import {Passage, Story} from '../store/stories';
 import {AppInfo} from './app-info';
 import {i18n} from './i18n';
+import {serializeVisualEditorMetadata} from './visual-editor-metadata';
 
 export interface PublishOptions {
 	/**
@@ -109,6 +110,9 @@ export function publishStory(
 			)}"></tw-tag>`,
 		''
 	);
+	const editorMetadata = JSON.stringify(serializeVisualEditorMetadata(story))
+		.replace(/</g, '\\u003c')
+		.replace(/>/g, '\\u003e');
 
 	return (
 		`<tw-storydata name="${escape(story.name)}" ` +
@@ -128,6 +132,9 @@ export function publishStory(
 		`<script role="script" id="twine-user-script" ` +
 		`type="text/twine-javascript">` +
 		story.script +
+		`</script>` +
+		`<script type="application/json" data-narrative-editor>` +
+		editorMetadata +
 		`</script>` +
 		tagData +
 		passageData +

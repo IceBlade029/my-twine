@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：定案阶段 5 三项交互决策，新增「阶段 6–9：SugarCube 全能力可视化」路线（表达式边界、list 优先、widget 归原始叶子、特殊段落做可视化表面）。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：完成阶段 5 实现（节点树 blocks v2 + 人话条件 + 模拟器 + 故事状态对话框 + 单向切源码），提交 `8edad74d`，验收通过（lint/tsc/27 单测 + 视觉验收）。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -37,6 +37,7 @@
 | `32dfcc58` | **基线空提交**：`chore: establish upstream Twine baseline`，有意创建的改造分界标记 |
 | `4729fac7` | **阶段 1–4 的功能提交**：`feat: add visual passage editor and metadata` |
 | `88d43ecf` | `chore: sync package-lock version to 2.12.0`（保留并提交 package-lock 版本号同步） |
+| `8edad74d` | **阶段 5 的功能提交**：`feat: rebuild visual passage editor as ordered node tree (blocks v2) with simulator and story-states dialog` |
 
 ### 约定
 
@@ -152,7 +153,7 @@
 - `src/components/control/card-button.tsx`：为 `react-transition-group` 补充 `nodeRef`。
 - `public/locales/en-US.json` / `zh-CN.json`：补齐可视化编辑器文案。
 
-### 阶段 5：可视化编辑器重构（计划中，未开始）
+### 阶段 5：可视化编辑器重构（已完成）
 
 > 方向决策（用户拍板）：把「可视化段落编辑器」从「一段 body + 一组 choices」重构为**可视化节点树**，核心目标是解决「条件/动作不可见、作用域不明确」的问题。三项已锁定：**浅树**、**故事状态移到故事级面板**、**段落编辑器底部可折叠模拟器抽屉**。
 
@@ -196,6 +197,17 @@
 2. **模拟器 vs Play**：并存不打通。模拟器定位纯编辑辅助（拨假想状态、高亮本段显隐、不运行、不执行动作）；Play 继续做真机验证；源码预览退居开发者折叠项。
 3. **块排序**：首版做**上/下移按钮 + 分支内就地加块**；拖拽作为后续增强。
 
+完成情况（提交 `8edad74d`，验收通过）：
+- 数据/编译：v2 blocks 模型、`migrateVisualContent`（v1→v2 无损、幂等）、`compileVisualPassage(content, story, passageId)` 用显式 id 修复 init 被剥、空选择编译跳过；元数据升 v2、递归处理嵌套 choice、兼容 v1 恢复。
+- UI：块树编辑器（text/choice/branch，上/下移/删除/就地加块）、人话条件/动作句、每块门槛条、底部**模拟器抽屉**（拨状态值 → 变灰 + 「hidden because …」）、**故事状态对话框**（工具栏按钮打开，移出编辑器）、**单向「Edit as source」+ 确认框**、即存(防抖)+「Saved」指示（Esc 不再丢字）。
+- 消费方同步：`passage-is-empty` 递归判空、`passage-card` 摘要取首个非空文字块、`passageUsesVisualEditor` 兼容 v1/v2。
+- 验收：`npm run lint`、`npx tsc --noEmit` 均通过；相关单测 4 套 27/27；视觉验收截图确认节点树 / 人话条件 / 模拟器 / 切源码，且切源码后的编译产物含正确的 `<<if undef>>` 初始化块。
+
+已知小瑕疵（不阻塞，后续再打磨）：
+1. 英文条件句措辞偏简（"When Has key is no"），中文版「当【Has key】是『否』时」可读性更好；英文可考虑用 "is set to yes/no"。
+2. 模拟器的布尔输入仍是 `true/false` 字面值，而条件值选择已用 yes/no（不一致）。
+3. 部分块操作按钮（Add text block / Add branch / Move up / Move down / Delete block）仍是硬编码英文，未进 i18n。
+
 ### 阶段 6–9：SugarCube 全能力可视化（路线草案，未开始）
 
 > 方向决策（用户拍板）：目标是"全部做成我们的可视化适配"，让作者始终待在可视化里。**运行时唯一真相仍是 SugarCube**——可视化只是生成器/投影，永不反向解析（延续既有原则）。四条定调见下。
@@ -234,7 +246,10 @@
 | `src/store/stories/stories.types.ts` | 故事/段落/可视化数据类型 |
 | `src/store/stories/defaults.ts` | 故事默认值（含 `visual`） |
 | `src/store/stories/action-creators/create-untitled-passage.ts` | 新建段落默认进入图形模式 |
-| `src/dialogs/passage-edit/passage-visual-editor.tsx` | 图形编辑器主组件（正文/选择/状态/条件/动作） |
+| `src/dialogs/passage-edit/passage-visual-editor.tsx` | 图形编辑器主组件（节点树 blocks + 人话条件/动作 + 模拟器 + 切源码） |
+| `src/dialogs/story-states/story-states-manager.tsx` | 故事状态管理（全局状态增删改 + 级联清理重编译） |
+| `src/dialogs/story-states/story-states-dialog.tsx` | 故事状态对话框（故事级，工具栏按钮打开） |
+| `src/routes/story-edit/toolbar/story-states-button.tsx` | 工具栏「故事状态」入口按钮 |
 | `src/dialogs/passage-edit/passage-edit-contents.tsx` | 图形/源码编辑器分流 |
 | `src/dialogs/passage-edit/passage-edit-stack.tsx` | 单段落停靠式编辑栈 |
 | `src/dialogs/context/action-creators.ts` | 打开段落编辑器的对话框动作 |

@@ -4,6 +4,7 @@ import * as React from 'react';
 import {
 	Story,
 	useStoriesContext,
+	VisualBinaryOperator,
 	VisualStoryState
 } from '../../../store/stories';
 import {
@@ -16,10 +17,20 @@ import zhCN from '../../../../public/locales/zh-CN.json';
 import {
 	actionSentenceText,
 	conditionSentenceText,
-	evaluateCondition,
+	evaluateExpression,
 	hiddenBecauseText,
 	PassageVisualEditor
 } from '../passage-visual-editor';
+
+
+function cond(operator: VisualBinaryOperator, variableId: string, value: boolean | number | string) {
+	return {
+		kind: 'binary' as const,
+		operator,
+		left: {kind: 'variable' as const, variableId},
+		right: {kind: 'literal' as const, value}
+	};
+}
 
 const TestEditor = () => {
 	const {stories} = useStoriesContext();
@@ -83,6 +94,16 @@ function renderComponent(setup?: (story: Story) => void) {
 	return {container, story};
 }
 
+/**
+ * Opens the single module selector and clicks the entry whose label key
+ * matches `labelKey`. The mocked i18next echoes the key, so tests pass the
+ * i18n key (e.g. 'dialogs.passageEdit.visual.blockKindChoice').
+ */
+function addModule(labelKey: string) {
+	fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addModule'));
+	fireEvent.click(screen.getByText(labelKey));
+}
+
 describe('<PassageVisualEditor>', () => {
 	it('commits body text as generated passage text on blur', () => {
 		const {story} = renderComponent();
@@ -99,7 +120,7 @@ describe('<PassageVisualEditor>', () => {
 	it('adds and completes a choice without writing SugarCube syntax', () => {
 		const {story} = renderComponent();
 
-		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addChoice'));
+		addModule('dialogs.passageEdit.visual.blockKindChoice');
 		const label = screen.getByLabelText(
 			'dialogs.passageEdit.visual.choiceLabel'
 		);
@@ -130,9 +151,7 @@ describe('<PassageVisualEditor>', () => {
 			};
 		});
 
-		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.addVariableBlock')
-		);
+		addModule('dialogs.passageEdit.visual.blockKindVariable');
 
 		// The fresh block is visibly incomplete until a state is chosen.
 		expect(
@@ -149,7 +168,7 @@ describe('<PassageVisualEditor>', () => {
 
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent('<<print $nrp_state_1>>');
+		).toHaveTextContent('<<print $Trust>>');
 		expect(
 			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
 		).not.toBeInTheDocument();
@@ -158,7 +177,7 @@ describe('<PassageVisualEditor>', () => {
 	it('adds and completes a raw block with a SugarCube textarea', () => {
 		const {story} = renderComponent();
 
-		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addRawBlock'));
+		addModule('dialogs.passageEdit.visual.blockKindRaw');
 
 		// The fresh block is visibly incomplete until sugar is typed.
 		expect(
@@ -197,9 +216,7 @@ describe('<PassageVisualEditor>', () => {
 			};
 		});
 
-		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.addVariableBlock')
-		);
+		addModule('dialogs.passageEdit.visual.blockKindVariable');
 
 		// New variable blocks default to the state source: the state picker is
 		// shown and the loop item hint is not.
@@ -241,9 +258,7 @@ describe('<PassageVisualEditor>', () => {
 	it('adds and completes an include block with a passage picker', () => {
 		const {story} = renderComponent();
 
-		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.addIncludeBlock')
-		);
+		addModule('dialogs.passageEdit.visual.blockKindInclude');
 
 		// The fresh block is visibly incomplete until a passage is chosen.
 		expect(
@@ -269,9 +284,7 @@ describe('<PassageVisualEditor>', () => {
 	it('adds and completes an interaction block with an operation and content', () => {
 		const {story} = renderComponent();
 
-		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.addInteractionBlock')
-		);
+		addModule('dialogs.passageEdit.visual.blockKindInteraction');
 
 		// The fresh block is visibly incomplete until a label is typed.
 		expect(
@@ -428,9 +441,7 @@ describe('<PassageVisualEditor>', () => {
 			};
 		});
 
-		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.addSwitchBlock')
-		);
+		addModule('dialogs.passageEdit.visual.blockKindSwitch');
 
 		// The fresh block is visibly incomplete until a state is chosen.
 		expect(
@@ -470,7 +481,7 @@ describe('<PassageVisualEditor>', () => {
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
 		).toHaveTextContent(
-			'<<switch $nrp_state_1>><<case 1>><</case>><</switch>>'
+			'<<switch $Mood>><<case 1>><</case>><</switch>>'
 		);
 	});
 
@@ -485,9 +496,7 @@ describe('<PassageVisualEditor>', () => {
 			};
 		});
 
-		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.addLoopBlock')
-		);
+		addModule('dialogs.passageEdit.visual.blockKindLoop');
 
 		// The fresh block is visibly incomplete until a list state is chosen.
 		expect(
@@ -513,7 +522,14 @@ describe('<PassageVisualEditor>', () => {
 			'dialogs.passageEdit.visual.loopBody'
 		);
 
-		fireEvent.click(within(loopBody).getByText('Add text block'));
+		fireEvent.click(
+			within(loopBody).getByText('dialogs.passageEdit.visual.addModule')
+		);
+		fireEvent.click(
+			within(loopBody).getByText(
+				'dialogs.passageEdit.visual.blockKindText'
+			)
+		);
 		const body = within(loopBody).getByLabelText(
 			'dialogs.passageEdit.visual.body'
 		);
@@ -523,10 +539,10 @@ describe('<PassageVisualEditor>', () => {
 
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent('<<for _item range $nrp_state_1>>Item:<</for>>');
+		).toHaveTextContent('<<for _item range $Inventory>>Item:<</for>>');
 	});
 
-	it('shows a hint when a loop block has no list states to choose from', () => {
+	it('disables the loop module in the selector when no list variable exists', () => {
 		renderComponent(setup => {
 			setup.visual = {
 				states: [
@@ -537,15 +553,93 @@ describe('<PassageVisualEditor>', () => {
 		});
 
 		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.addLoopBlock')
+			screen.getByText('dialogs.passageEdit.visual.addModule')
+		);
+
+		// 遍历列表 is disabled (and explained) when there is no list variable.
+		const loopEntry = screen
+			.getByText('dialogs.passageEdit.visual.blockKindLoop')
+			.closest('button');
+
+		expect(loopEntry).not.toBeNull();
+		expect(loopEntry).toBeDisabled();
+		expect(loopEntry).toHaveAttribute(
+			'title',
+			'dialogs.passageEdit.visual.noListStateSelectorReason'
+		);
+	});
+
+	it('adds and completes a set variable block', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+		});
+
+		addModule('dialogs.passageEdit.visual.blockKindSet');
+
+		// The fresh block is visibly incomplete until a target is chosen.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockIncomplete')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindSet')
+		).toBeInTheDocument();
+
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.setVariable'),
+			{target: {value: 'state-1'}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.setOperation'),
+			{target: {value: '+='}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.setValue'),
+			{target: {value: '1'}}
 		);
 
 		expect(
-			screen.getByText('dialogs.passageEdit.visual.loopListHint')
-		).toBeInTheDocument();
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('<<set $Trust += 1>>');
 		expect(
-			screen.getByLabelText('dialogs.passageEdit.visual.loopState')
-		).toBeDisabled();
+			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
+		).not.toBeInTheDocument();
+	});
+
+	it('condition editor stores a binary expression', () => {
+		renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						condition: cond('>', 'state-1', 5),
+						id: 'text-1',
+						kind: 'text',
+						text: 'High.'
+					}
+				],
+				version: 2
+			};
+		});
+
+		// The condition editor exposes the state, operator symbols, and value.
+		const operator = screen.getByLabelText(
+			'dialogs.passageEdit.visual.conditionOperator'
+		);
+
+		expect(operator).toHaveTextContent('>');
+		expect(operator).toHaveTextContent('≥');
+		expect(operator).toHaveTextContent('<');
+		expect(operator).toHaveTextContent('≤');
 	});
 
 	it('renders block shells with a data-depth attribute and a kind icon', () => {
@@ -598,7 +692,7 @@ describe('<PassageVisualEditor>', () => {
 
 		expect(preview).not.toBeNull();
 		expect(preview?.textContent).toContain(
-			'<<if ndef $nrp_state_1>><<set $nrp_state_1 = 0>><</if>>'
+			'<<if ndef $Trust>><<set $Trust = 0>><</if>>'
 		);
 	});
 
@@ -617,6 +711,340 @@ describe('<PassageVisualEditor>', () => {
 			screen.queryByText('dialogs.passageEdit.visual.storyInitPreview')
 		).not.toBeInTheDocument();
 		expect(container.querySelector('.story-init-preview')).toBeNull();
+	});
+});
+
+describe('module selector (P2)', () => {
+	it('opens the grouped selector from a single insert button and adds a module', () => {
+		const {story} = renderComponent();
+
+		// No per-kind add buttons remain, only the single insert button.
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.addChoice')
+		).not.toBeInTheDocument();
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addModule')
+		);
+
+		// The selector is grouped: 常用 holds the text/choice/branch/set.
+		const groups = screen.getAllByText(
+			'dialogs.passageEdit.visual.selectorGroupCommon'
+		);
+		expect(groups.length).toBeGreaterThanOrEqual(1);
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindChoice')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				'dialogs.passageEdit.visual.moduleChoiceDescription'
+			)
+		).toBeInTheDocument();
+
+		// Selecting an entry inserts that module at the end of the list.
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.blockKindChoice')
+		);
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.choiceLabel')
+		).toBeInTheDocument();
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toBeInTheDocument();
+	});
+
+	it('filters selector entries by technical alias', () => {
+		const {container} = renderComponent();
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addModule')
+		);
+		const countEntries = () =>
+			container.querySelectorAll('.module-entry').length;
+
+		expect(countEntries()).toBeGreaterThan(1);
+
+		// Searching the alias "switch" leaves only the 多路分支 entry.
+		fireEvent.change(
+			screen.getByLabelText(
+				'dialogs.passageEdit.visual.moduleSearchPlaceholder'
+			),
+			{target: {value: 'switch'}}
+		);
+
+		expect(countEntries()).toBe(1);
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindSwitch')
+		).toBeInTheDocument();
+	});
+
+	it('enables a loop module once a list variable exists', () => {
+		renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: ['a'], id: 'state-1', name: 'Inv', type: 'list'}
+				],
+				version: 1
+			};
+		});
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addModule')
+		);
+
+		const loopEntry = screen
+			.getByText('dialogs.passageEdit.visual.blockKindLoop')
+			.closest('button');
+
+		expect(loopEntry).not.toBeNull();
+		expect(loopEntry).not.toBeDisabled();
+	});
+});
+
+describe('condition dual view (P2)', () => {
+	function renderConditioned() {
+		return renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: cond('>', 'state-1', 5),
+						id: 'text-1',
+						kind: 'text',
+						text: 'Hi.'
+					}
+				],
+				version: 2
+			};
+		});
+	}
+
+	it('toggles builder/expression and round-trips the simple shape', () => {
+		renderConditioned();
+
+		// Starts in builder mode with the three controls.
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.conditionState')
+		).toBeInTheDocument();
+
+		// Switch to expression mode: a textarea shows the serialized code.
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.expressionMode')
+		);
+		const code = screen.getByLabelText(
+			'dialogs.passageEdit.visual.expressionSymbol'
+		);
+
+		expect(code).toBeInTheDocument();
+		expect((code as HTMLTextAreaElement).value).toContain('$Trust');
+		expect(
+			screen.queryByLabelText('dialogs.passageEdit.visual.conditionState')
+		).not.toBeInTheDocument();
+
+		// Back to builder: the simple shape parses and the controls return.
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.builderMode')
+		);
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.conditionState')
+		).toBeInTheDocument();
+	});
+
+	it('shows a read-only note for a complex free expression', () => {
+		renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: {
+							code: '$a > 1 && $b < 2',
+							kind: 'free'
+						},
+						id: 'text-1',
+						kind: 'text',
+						text: 'Hi.'
+					}
+				],
+				version: 2
+			};
+		});
+
+		// Advanced free expressions open in expression mode with the note.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.advancedSyntaxNote')
+		).toBeInTheDocument();
+		expect(
+			screen.getByLabelText(
+				'dialogs.passageEdit.visual.expressionSymbol'
+			)
+		).toBeInTheDocument();
+	});
+
+	it('shows instant feedback under the editor', () => {
+		renderConditioned();
+
+		// Default Trust is 0, so (Trust > 5) is false for the current test value.
+		expect(
+			screen.getByText(/currentTestValue/)
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/readsVariables/)
+		).toBeInTheDocument();
+	});
+});
+
+describe('set block value sources (P2)', () => {
+	it('offers 常量/变量/循环项/自由表达式 sources', () => {
+		renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'},
+					{defaultValue: 2, id: 'state-2', name: 'Gold', type: 'number'}
+				],
+				version: 1
+			};
+		});
+
+		addModule('dialogs.passageEdit.visual.blockKindSet');
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.setVariable'),
+			{target: {value: 'state-1'}}
+		);
+
+		const source = screen.getByLabelText(
+			'dialogs.passageEdit.visual.valueSource'
+		);
+
+		expect(source).toHaveTextContent(
+			'dialogs.passageEdit.visual.valueSourceConstant'
+		);
+		expect(source).toHaveTextContent(
+			'dialogs.passageEdit.visual.valueSourceVariable'
+		);
+		expect(source).toHaveTextContent(
+			'dialogs.passageEdit.visual.valueSourceLoopItem'
+		);
+		expect(source).toHaveTextContent(
+			'dialogs.passageEdit.visual.valueSourceFreeExpression'
+		);
+
+		// Constant source shows the type-aware literal input.
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.setValue')
+		).toBeInTheDocument();
+
+		// Variable source picks another story state.
+		fireEvent.change(source, {target: {value: 'variable'}});
+		fireEvent.change(
+			screen.getByLabelText(
+				'dialogs.passageEdit.visual.valueSourceVariable'
+			),
+			{target: {value: 'state-2'}}
+		);
+
+		// Loop item source shows the hint.
+		fireEvent.change(source, {target: {value: 'loopItem'}});
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.loopItemValueHint')
+		).toBeInTheDocument();
+
+		// Free expression source shows a text input.
+		fireEvent.change(source, {target: {value: 'free'}});
+		fireEvent.change(
+			screen.getByLabelText(
+				'dialogs.passageEdit.visual.valueFreeExpression'
+			),
+			{target: {value: '$Gold + 1'}}
+		);
+	});
+
+	it('renders a "$name op value" structure summary with a test result', () => {
+		renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 1, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+		});
+
+		addModule('dialogs.passageEdit.visual.blockKindSet');
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.setVariable'),
+			{target: {value: 'state-1'}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.setOperation'),
+			{target: {value: '+='}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.setValue'),
+			{target: {value: '4'}}
+		);
+
+		// The summary line "$Trust += 4" and a "1 -> 5" test result appear.
+		expect(document.querySelector('.set-summary')).toHaveTextContent(
+			'$Trust += 4'
+		);
+		expect(
+			screen.getByText(/testResult/)
+		).toBeInTheDocument();
+		expect(document.querySelector('.set-test-result')).toHaveTextContent(
+			'1 -> 5'
+		);
+	});
+});
+
+describe('per-block code preview (P2)', () => {
+	it('shows the compiled fragment for a single block', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 1, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						id: 'set-1',
+						kind: 'set',
+						operation: '+=',
+						variableId: 'state-1',
+						value: {kind: 'literal', value: 1}
+					},
+					{
+						id: 'raw-1',
+						kind: 'raw',
+						sugar: '<<set $x = 1>>'
+					}
+				],
+				version: 2
+			};
+		});
+
+		// Two blocks, one shared code toggle in each toolbar.
+		const codeButtons = screen.getAllByRole('button', {
+			name: 'dialogs.passageEdit.visual.blockCode'
+		});
+
+		expect(codeButtons.length).toBe(2);
+
+		// Opening the preview on the raw block shows only that block's code.
+		fireEvent.click(codeButtons[1]);
+		const previews = document.querySelectorAll('.block-code-preview');
+
+		expect(previews.length).toBe(1);
+		expect(previews[0].textContent).toContain('<<set $x = 1>>');
+
+		// The compiled fragment still works for the story's passages.
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).not.toBeNull();
 	});
 });
 
@@ -671,11 +1099,7 @@ describe('human-readable conditions and actions', () => {
 			story.passages[0].visual = {
 				blocks: [
 					{
-						condition: {
-							operator: 'greaterThan',
-							stateId: 'state-1',
-							value: 5
-						},
+						condition: cond('>', 'state-1', 5),
 						id: 'text-1',
 						kind: 'text',
 						text: 'Hello.'
@@ -694,33 +1118,17 @@ describe('human-readable conditions and actions', () => {
 
 	it('formats condition and action sentences with the correct words', () => {
 		expect(
-			conditionSentenceText(
-				tEn,
-				{operator: 'equals', stateId: 'door', value: true},
-				states
-			)
+			conditionSentenceText(tEn, cond('==', 'door', true), states)
 		).toBe('When Door = true');
 		expect(
-			conditionSentenceText(
-				tEn,
-				{operator: 'greaterThan', stateId: 'trust', value: 5},
-				states
-			)
+			conditionSentenceText(tEn, cond('>', 'trust', 5), states)
 		).toBe('When Trust > 5');
 		expect(
-			conditionSentenceText(
-				tZh,
-				{operator: 'equals', stateId: 'door', value: false},
-				states
-			)
+			conditionSentenceText(tZh, cond('==', 'door', false), states)
 		).toBe('当【Door】= false时');
-		expect(
-			hiddenBecauseText(
-				tZh,
-				{operator: 'equals', stateId: 'door', value: false},
-				states
-			)
-		).toBe('因【Door】= false而隐藏');
+		expect(hiddenBecauseText(tZh, cond('==', 'door', false), states)).toBe(
+			'因【Door】= false而隐藏'
+		);
 		expect(
 			actionSentenceText(
 				tEn,
@@ -737,75 +1145,76 @@ describe('human-readable conditions and actions', () => {
 		).toBe('点击后：【Trust】加 『1』');
 	});
 
-	it('evaluates conditions against simulated values', () => {
-		const door = states[0];
-		const trust = states[1];
+	it('evaluates expressions against simulated values', () => {
+		expect(
+			evaluateExpression(cond('==', 'door', true), states, {door: true})
+		).toBe(true);
+		expect(
+			evaluateExpression(cond('!=', 'door', false), states, {door: false})
+		).toBe(false);
+		expect(
+			evaluateExpression(cond('>', 'trust', 5), states, {trust: 0})
+		).toBe(false);
+		expect(
+			evaluateExpression(cond('>', 'trust', 5), states, {trust: 7})
+		).toBe(true);
+		expect(
+			evaluateExpression(cond('<', 'trust', 5), states, {trust: 7})
+		).toBe(false);
+		expect(
+			evaluateExpression(cond('>=', 'trust', 5), states, {trust: 5})
+		).toBe(true);
+		expect(
+			evaluateExpression(cond('<=', 'trust', 5), states, {trust: 4})
+		).toBe(true);
 
+		// A variable missing from the simulation falls back to its default.
 		expect(
-			evaluateCondition({operator: 'equals', stateId: 'door', value: true}, door, true)
-		).toBe(true);
-		expect(
-			evaluateCondition({operator: 'notEquals', stateId: 'door', value: false}, door, false)
+			evaluateExpression(cond('>', 'trust', 5), states, {})
 		).toBe(false);
+
+		// A condition referencing a deleted state cannot be determined: it
+		// must not hide a block (undefined).
 		expect(
-			evaluateCondition({operator: 'greaterThan', stateId: 'trust', value: 5}, trust, 0)
-		).toBe(false);
+			evaluateExpression(cond('==', 'gone', 1), states, {})
+		).toBeUndefined();
+
+		// A loop item or free expression cannot be evaluated.
 		expect(
-			evaluateCondition({operator: 'greaterThan', stateId: 'trust', value: 5}, trust, 7)
-		).toBe(true);
+			evaluateExpression({kind: 'loopItem'}, states, {})
+		).toBeUndefined();
 		expect(
-			evaluateCondition({operator: 'lessThan', stateId: 'trust', value: 5}, trust, 7)
-		).toBe(false);
-		// A condition referencing a deleted state never hides a block.
-		expect(
-			evaluateCondition({operator: 'equals', stateId: 'gone', value: 1}, undefined, 1)
-		).toBe(true);
+			evaluateExpression({kind: 'free', code: '$trust > 1'}, states, {trust: 5})
+		).toBeUndefined();
 	});
 
-	it('evaluates list conditions against simulated array values', () => {
+	it('evaluates list expressions against simulated array values', () => {
 		const inv: VisualStoryState = {
 			defaultValue: [],
 			id: 'inv',
 			name: 'Inventory',
 			type: 'list'
 		};
+		const allStates = [inv];
+		const values = {inv: ['key', 'torch']};
 
 		expect(
-			evaluateCondition(
-				{operator: 'includes', stateId: 'inv', value: 'key'},
-				inv,
-				['key', 'torch']
-			)
+			evaluateExpression(cond('includes', 'inv', 'key'), allStates, values)
 		).toBe(true);
 		expect(
-			evaluateCondition(
-				{operator: 'includes', stateId: 'inv', value: 'map'},
-				inv,
-				['key', 'torch']
-			)
+			evaluateExpression(cond('includes', 'inv', 'map'), allStates, values)
 		).toBe(false);
 		expect(
-			evaluateCondition(
-				{operator: 'notIncludes', stateId: 'inv', value: 'map'},
-				inv,
-				['key', 'torch']
-			)
+			evaluateExpression(cond('notIncludes', 'inv', 'map'), allStates, values)
 		).toBe(true);
 		expect(
-			evaluateCondition(
-				{operator: 'notIncludes', stateId: 'inv', value: 'key'},
-				inv,
-				['key', 'torch']
-			)
+			evaluateExpression(cond('notIncludes', 'inv', 'key'), allStates, values)
 		).toBe(false);
-		// A non-array simulated value never hides a list condition.
+		// A non-array simulated value cannot be determined (undefined): it
+		// must not hide a list expression.
 		expect(
-			evaluateCondition(
-				{operator: 'includes', stateId: 'inv', value: 'key'},
-				inv,
-				'key'
-			)
-		).toBe(true);
+			evaluateExpression(cond('includes', 'inv', 'key'), allStates, {inv: 'key'})
+		).toBeUndefined();
 	});
 
 	it('offers list operators in the condition editor for list states', () => {
@@ -824,11 +1233,7 @@ describe('human-readable conditions and actions', () => {
 			story.passages[0].visual = {
 				blocks: [
 					{
-						condition: {
-							operator: 'equals',
-							stateId: 'state-1',
-							value: 'key'
-						},
+						condition: cond('==', 'state-1', 'key'),
 						id: 'text-1',
 						kind: 'text',
 						text: 'Hello.'
@@ -914,11 +1319,7 @@ describe('simulator', () => {
 			story.passages[0].visual = {
 				blocks: [
 					{
-						condition: {
-							operator: 'greaterThan',
-							stateId: 'state-1',
-							value: 5
-						},
+						condition: cond('>', 'state-1', 5),
 						id: 'text-1',
 						kind: 'text',
 						text: 'Secret.'
@@ -932,7 +1333,7 @@ describe('simulator', () => {
 		// The simulator starts closed: no dimming.
 		expect(body()).not.toHaveClass('is-hidden');
 
-		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.simulatorToggle'));
+		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.runtimeDrawer'));
 
 		// The default value (0) does not satisfy Trust > 5: the block is dimmed
 		// and annotated as hidden.
@@ -985,7 +1386,7 @@ describe('simulator', () => {
 		const defaultSection = () => container.querySelector('.switch-default');
 
 		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.simulatorToggle')
+			screen.getByText('dialogs.passageEdit.visual.runtimeDrawer')
 		);
 
 		// The default value 0 matches the second case: the first case and the
@@ -1018,11 +1419,7 @@ describe('simulator', () => {
 						branches: [
 							{
 								blocks: [{id: 't1', kind: 'text', text: 'A'}],
-								condition: {
-									operator: 'equals',
-									stateId: 'state-1',
-									value: 1
-								},
+								condition: cond('==', 'state-1', 1),
 								id: 'b1'
 							},
 							{blocks: [{id: 't2', kind: 'text', text: 'B'}], id: 'b2'}
@@ -1037,7 +1434,7 @@ describe('simulator', () => {
 		const branches = () =>
 			container.querySelectorAll('.visual-passage-branch .branch');
 
-		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.simulatorToggle'));
+		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.runtimeDrawer'));
 
 		// Default 0 does not match Trust == 1, so the else branch is active.
 		expect(branches()[0]).toHaveClass('is-inactive');
@@ -1072,11 +1469,7 @@ describe('simulator', () => {
 			story.passages[0].visual = {
 				blocks: [
 					{
-						condition: {
-							operator: 'includes',
-							stateId: 'state-1',
-							value: 'map'
-						},
+						condition: cond('includes', 'state-1', 'map'),
 						id: 'text-1',
 						kind: 'text',
 						text: 'You have a map.'
@@ -1088,7 +1481,7 @@ describe('simulator', () => {
 		const body = () => container.querySelector('.visual-block-body');
 
 		fireEvent.click(
-			screen.getByText('dialogs.passageEdit.visual.simulatorToggle')
+			screen.getByText('dialogs.passageEdit.visual.runtimeDrawer')
 		);
 
 		// The default (['key']) does not include 'map': the block is hidden.
@@ -1164,5 +1557,141 @@ describe('save-on-change', () => {
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
 		).toHaveTextContent('Escape-proof text.');
+	});
+});
+
+describe('运行检查 runtime drawer (P3)', () => {
+	/**
+	 * Captures the 'message' handler the drawer registers on window, returning
+	 * a function that invokes it directly with a payload (the usual way to mock
+	 * the sandboxed iframe's postMessage round-trip).
+	 */
+	function captureMessageHandler(): (payload: Record<string, unknown>) => void {
+		const addSpy = jest.spyOn(window, 'addEventListener');
+		let handler: ((event: MessageEvent) => void) | undefined;
+
+		return payload => {
+			if (!handler) {
+				addSpy.mock.calls.forEach(args => {
+					if (args[0] === 'message') {
+						handler = args[1] as (e: MessageEvent) => void;
+					}
+				});
+			}
+
+			if (!handler) {
+				throw new Error('no message handler registered');
+			}
+
+			act(() => {
+				handler!({data: payload} as MessageEvent);
+			});
+		};
+	}
+
+	it('renders the four tabs and a run button', () => {
+		renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [{id: 'text-1', kind: 'text', text: 'Hello.'}],
+				version: 2
+			};
+		});
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.runtimeDrawer')
+		);
+
+		// The 运行 button and all four tabs exist.
+		expect(
+			screen.getByRole('button', {name: 'dialogs.passageEdit.visual.runButton'})
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole('tab', {name: 'dialogs.passageEdit.visual.runTabState'})
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole('tab', {name: 'dialogs.passageEdit.visual.runTabRender'})
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole('tab', {name: 'dialogs.passageEdit.visual.runTabTrace'})
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole('tab', {name: 'dialogs.passageEdit.visual.runTabSugar'})
+		).toBeInTheDocument();
+	});
+
+	it('clicking a trace entry highlights its block in the tree', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [{id: 'text-1', kind: 'text', text: 'Hello.'}],
+				version: 2
+			};
+		});
+
+		const runner = captureMessageHandler();
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.runtimeDrawer')
+		);
+		fireEvent.click(
+			screen.getByRole('tab', {name: 'dialogs.passageEdit.visual.runTabTrace'})
+		);
+
+		// No trace yet -> hint is shown.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.runHint')
+		).toBeInTheDocument();
+
+		// Simulate the sandbox runtime posting a result back.
+		runner({
+			type: 'narrative-test-result',
+			before: {Trust: 0},
+			after: {Trust: 3},
+			html: '<p>Hello.</p>',
+			trace: [{b: 'text-1', ev: 's'}, {b: 'text-1', ev: 'e'}]
+		});
+
+		// A block trace entry is clickable (start/end markers).
+		const blockEntry = container.querySelector(
+			'.run-trace-entry.run-trace-clickable'
+		);
+
+		expect(blockEntry).not.toBeNull();
+
+		// Clicking it selects the block: the shell gains the highlight class.
+		fireEvent.click(blockEntry as Element);
+		const selectedBlocks = container.querySelectorAll(
+			'.visual-block.is-selected'
+		);
+
+		expect(selectedBlocks.length).toBe(1);
+		expect(
+			selectedBlocks[0].querySelector('.block-kind')
+		).toBeInTheDocument();
+
+		// Clicking again toggles the selection off.
+		fireEvent.click(blockEntry as Element);
+		expect(
+			container.querySelectorAll('.visual-block.is-selected').length
+		).toBe(0);
+	});
+
+	it('casts an engine error into the runtime-error banner', () => {
+		renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [{id: 'text-1', kind: 'text', text: 'Hello.'}],
+				version: 2
+			};
+		});
+
+		const runner = captureMessageHandler();
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.runtimeDrawer')
+		);
+		runner({
+			type: 'narrative-test-error',
+			message: 'engine exploded'
+		});
+
+		expect(screen.getByRole('alert')).toHaveTextContent('engine exploded');
 	});
 });

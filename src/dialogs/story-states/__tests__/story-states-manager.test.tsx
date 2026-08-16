@@ -2,8 +2,19 @@ import {fireEvent, render, screen} from '@testing-library/react';
 import * as React from 'react';
 import {Story, useStoriesContext} from '../../../store/stories';
 import {fakeStory, FakeStateProvider, StoryInspector} from '../../../test-util';
+import {VisualBinaryOperator} from '../../../store/stories';
 import {compileVisualPassage} from '../../../util/visual-passage';
 import {StoryStatesManager} from '../story-states-manager';
+
+
+function cond(operator: VisualBinaryOperator, variableId: string, value: boolean | number | string) {
+	return {
+		kind: 'binary' as const,
+		operator,
+		left: {kind: 'variable' as const, variableId},
+		right: {kind: 'literal' as const, value}
+	};
+}
 
 const TestManager = () => {
 	const {stories} = useStoriesContext();
@@ -68,13 +79,13 @@ describe('<StoryStatesManager>', () => {
 		// A StoryInit passage is auto-created to own the initialization, which
 		// SugarCube runs once at story start.
 		expect(storyInitCount()).toBe(1);
-		expect(storyInitNode()).toHaveTextContent(/<<if ndef \$nrp_/);
+		expect(storyInitNode()).toHaveTextContent(/<<if ndef \$Trust/);
 		expect(storyInitNode()).toHaveTextContent('= 2');
 
 		// The start passage no longer owns the init block.
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).not.toHaveTextContent(/<<if ndef \$nrp_/);
+		).not.toHaveTextContent(/<<if ndef \$Trust/);
 	});
 
 	it('strips conditions referencing a deleted state when recompiling', () => {
@@ -93,11 +104,7 @@ describe('<StoryStatesManager>', () => {
 			story.passages[0].visual = {
 				blocks: [
 					{
-						condition: {
-							operator: 'equals',
-							stateId: 'state-1',
-							value: 0
-						},
+						condition: cond('==', 'state-1', 0),
 						id: 'text-1',
 						kind: 'text',
 						text: 'Hello.'
@@ -115,7 +122,7 @@ describe('<StoryStatesManager>', () => {
 		// The condition compiles while the state exists.
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent(/<<if \$nrp_/);
+		).toHaveTextContent(/<<if \(?\$Trust/);
 
 		// Delete the only state; the condition must be stripped on recompile.
 		fireEvent.click(screen.getByText('×'));
@@ -141,11 +148,7 @@ describe('<StoryStatesManager>', () => {
 			story.passages[0].visual = {
 				blocks: [
 					{
-						condition: {
-							operator: 'greaterThan',
-							stateId: 'state-1',
-							value: 2
-						},
+						condition: cond('>', 'state-1', 2),
 						content: 'Secret.',
 						id: 'int-1',
 						kind: 'interaction',
@@ -165,7 +168,7 @@ describe('<StoryStatesManager>', () => {
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
 		// The condition compiles while the state exists.
-		expect(passageText()).toHaveTextContent(/<<if \$nrp_/);
+		expect(passageText()).toHaveTextContent(/<<if \(?\$Trust/);
 
 		// Deleting the state strips the interaction block's condition but keeps
 		// the block itself, like a text block.
@@ -191,11 +194,7 @@ describe('<StoryStatesManager>', () => {
 			story.passages[0].visual = {
 				blocks: [
 					{
-						condition: {
-							operator: 'greaterThan',
-							stateId: 'state-1',
-							value: 2
-						},
+						condition: cond('>', 'state-1', 2),
 						id: 'raw-1',
 						kind: 'raw',
 						sugar: '<<set $custom = 1>>'
@@ -213,7 +212,7 @@ describe('<StoryStatesManager>', () => {
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
 		// The condition compiles while the state exists.
-		expect(passageText()).toHaveTextContent(/<<if \$nrp_/);
+		expect(passageText()).toHaveTextContent(/<<if \(?\$Trust/);
 
 		// Deleting the state strips the raw block's condition but keeps the
 		// block and its sugar, like a text block.
@@ -239,11 +238,7 @@ describe('<StoryStatesManager>', () => {
 			story.passages[0].visual = {
 				blocks: [
 					{
-						condition: {
-							operator: 'greaterThan',
-							stateId: 'state-1',
-							value: 1
-						},
+						condition: cond('>', 'state-1', 1),
 						id: 'var-loop',
 						kind: 'variable',
 						source: 'loopItem',
@@ -269,14 +264,14 @@ describe('<StoryStatesManager>', () => {
 
 		// Both blocks compile while the state exists.
 		expect(passageText()).toHaveTextContent('<<print _item>>');
-		expect(passageText()).toHaveTextContent('<<print $nrp_state_1>>');
+		expect(passageText()).toHaveTextContent('<<print $Trust>>');
 
 		// Deleting the state strips both conditions but keeps the loop item
 		// block (no state id to clear); the state block becomes incomplete.
 		fireEvent.click(screen.getByText('×'));
 
 		expect(passageText()).toHaveTextContent('<<print _item>>');
-		expect(passageText()).not.toHaveTextContent('<<print $nrp_state_1>>');
+		expect(passageText()).not.toHaveTextContent('<<print $Trust>>');
 		expect(passageText()).not.toHaveTextContent(/<<if/);
 	});
 
@@ -306,11 +301,7 @@ describe('<StoryStatesManager>', () => {
 							{
 								blocks: [
 									{
-										condition: {
-											operator: 'equals',
-											stateId: 'state-1',
-											value: 1
-										},
+										condition: cond('==', 'state-1', 1),
 										id: 'text-1',
 										kind: 'text',
 										text: 'Happy.'
@@ -328,11 +319,7 @@ describe('<StoryStatesManager>', () => {
 					{
 						blocks: [
 							{
-								condition: {
-									operator: 'includes',
-									stateId: 'state-1',
-									value: 1
-								},
+								condition: cond('includes', 'state-1', 1),
 								id: 'text-2',
 								kind: 'text',
 								text: 'Item.'
@@ -364,9 +351,9 @@ describe('<StoryStatesManager>', () => {
 				);
 
 		// Both blocks compile while their states exist.
-		expect(passageText()).toHaveTextContent('<<switch $nrp_state_1>>');
+		expect(passageText()).toHaveTextContent('<<switch $Trust>>');
 		expect(passageText()).toHaveTextContent(
-			'<<for _item range $nrp_state_2>>'
+			'<<for _item range $Inventory>>'
 		);
 
 		// Deleting the switch's state clears its state id (the switch stops
@@ -374,9 +361,9 @@ describe('<StoryStatesManager>', () => {
 		fireEvent.click(stateDeleteButtons()[0]);
 
 		expect(passageText()).not.toHaveTextContent('<<switch');
-		expect(passageText()).not.toHaveTextContent('<<if $nrp_state_1');
+		expect(passageText()).not.toHaveTextContent('<<if $Trust');
 		expect(passageText()).toHaveTextContent(
-			'<<for _item range $nrp_state_2>>Item.<</for>>'
+			'<<for _item range $Inventory>>Item.<</for>>'
 		);
 
 		// Deleting the loop's state clears its state id too: nothing compiles.
@@ -505,11 +492,7 @@ describe('<StoryStatesManager>', () => {
 						targetPassageId: story.passages[1].id
 					},
 					{
-						condition: {
-							operator: 'greaterThan',
-							stateId: 'state-1',
-							value: 2
-						},
+						condition: cond('>', 'state-1', 2),
 						id: 'text-1',
 						kind: 'text',
 						text: 'High.'
@@ -527,8 +510,8 @@ describe('<StoryStatesManager>', () => {
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
 		// While number, the increase action and greaterThan condition compile.
-		expect(passageText()).toHaveTextContent('$nrp_state_1 += 1');
-		expect(passageText()).toHaveTextContent('$nrp_state_1 gt 2');
+		expect(passageText()).toHaveTextContent('$Trust += 1');
+		expect(passageText()).toHaveTextContent('($Trust > 2)');
 
 		// Changing the type to list strips both; the set action survives.
 		fireEvent.change(
@@ -536,8 +519,82 @@ describe('<StoryStatesManager>', () => {
 			{target: {value: 'list'}}
 		);
 
-		expect(passageText()).not.toHaveTextContent('$nrp_state_1 += 1');
+		expect(passageText()).not.toHaveTextContent('$Trust += 1');
 		expect(passageText()).not.toHaveTextContent('gt 2');
-		expect(passageText()).toHaveTextContent('$nrp_state_1 = 0');
+		expect(passageText()).toHaveTextContent('$Trust = 0');
+	});
+
+	it('clears a set block variable id when its state is deleted', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						id: 'set-1',
+						kind: 'set',
+						operation: '+=',
+						variableId: 'state-1',
+						value: {kind: 'literal', value: 1},
+						condition: cond('>', 'state-1', 0)
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		// The set block compiles while its state exists.
+		expect(passageText()).toHaveTextContent('<<if ($Trust > 0)>><<set $Trust += 1>><</if>>');
+
+		// Deleting the state clears the block's variable id (it stops compiling)
+		// and strips the condition on the deleted state.
+		fireEvent.click(screen.getByText('×'));
+
+		expect(passageText()).not.toHaveTextContent('<<set');
+		expect(passageText()).not.toHaveTextContent(/<<if/);
+	});
+
+	it('warns when a state name sanitizes to the same variable as another', () => {
+		renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'},
+					{defaultValue: 0, id: 'state-2', name: 'Other', type: 'number'}
+				],
+				version: 1
+			};
+		});
+
+		// Renaming the second state to collide with the first's sanitized name.
+		const nameInputs = screen.getAllByLabelText(
+			'dialogs.passageEdit.visual.stateName'
+		);
+
+		expect(nameInputs).toHaveLength(2);
+		fireEvent.change(nameInputs[1], {target: {value: 'Trust'}});
+
+		// Both rows now share the sanitized name, so each shows the warning.
+		// The mocked i18next echoes the key verbatim (no interpolation).
+		expect(
+			screen.getAllByText(
+				'dialogs.passageEdit.visual.nameConflictWarning'
+			).length
+		).toBeGreaterThanOrEqual(1);
 	});
 });

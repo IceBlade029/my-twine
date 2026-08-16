@@ -11,6 +11,6 @@ describe('closestAppLocale()', () => {
 		expect(closestAppLocale('da-DK')).toBe('da');
 	});
 
-	it("returns 'en-us' as a fallback", () =>
-		expect(closestAppLocale('martian')).toBe('en-us'));
+	it("returns 'zh-cn' as the default fallback", () =>
+		expect(closestAppLocale('martian')).toBe('zh-cn'));
 });

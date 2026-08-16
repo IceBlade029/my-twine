@@ -13,7 +13,8 @@ export const i18nReady = i18n
 			loadPath: `${import.meta.env.BASE_URL}locales/{{lng}}.json`,
 			maxRetries: 1
 		},
-		fallbackLng: 'en-us',
+		fallbackLng: 'zh-cn',
+		lng: 'zh-cn',
 		interpolation: {
 			escapeValue: false
 		},

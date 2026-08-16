@@ -4,11 +4,12 @@ import {
 	VisualBranch,
 	VisualBranchBlock,
 	VisualChoiceBlock,
-	VisualCondition,
+	VisualExpression,
 	VisualIncludeBlock,
 	VisualInteractionBlock,
 	VisualLoopBlock,
 	VisualRawBlock,
+	VisualSetBlock,
 	VisualStoryContentV1,
 	VisualSwitchBlock,
 	VisualSwitchCase,
@@ -21,7 +22,7 @@ import {
 } from './visual-passage';
 
 export const visualEditorMetadataSelector =
-	'script[type="application/json"][data-narrative-editor]';
+	'tw-narrative-editor-metadata[data-narrative-editor]';
 
 interface SerializedChoiceBlock
 	extends Omit<VisualChoiceBlock, 'targetPassageId'> {
@@ -61,6 +62,7 @@ type SerializedBlock =
 	| SerializedChoiceBlock
 	| VisualInteractionBlock
 	| VisualVariableBlock
+	| VisualSetBlock
 	| VisualRawBlock
 	| SerializedIncludeBlock
 	| SerializedBranchBlock
@@ -69,7 +71,7 @@ type SerializedBlock =
 
 interface SerializedPassageV1 {
 	body: string;
-	bodyCondition?: VisualCondition;
+	bodyCondition?: VisualExpression;
 	choices: SerializedChoiceBlock[];
 	generatedText: string;
 	version: 1;

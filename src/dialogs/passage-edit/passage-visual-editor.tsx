@@ -13,7 +13,8 @@ import {
 	IconSourceCode,
 	IconTrash,
 	IconTypography,
-	IconVariable
+	IconVariable,
+	IconVariablePlus
 } from '@tabler/icons';
 import type {TFunction} from 'i18next';
 import * as React from 'react';
@@ -22,17 +23,19 @@ import {IconButton} from '../../components/control/icon-button';
 import {
 	Passage,
 	Story,
+	VisualBinaryOperator,
 	VisualBlock,
 	VisualBranch,
 	VisualBranchBlock,
 	VisualChoiceBlock,
-	VisualCondition,
+	VisualExpression,
 	VisualIncludeBlock,
 	VisualInteractionBlock,
 	VisualLoopBlock,
 	VisualPassageContent,
 	VisualPassageContentV2,
 	VisualRawBlock,
+	VisualSetBlock,
 	VisualStateAction,
 	VisualStoryState,
 	VisualSwitchBlock,
@@ -43,11 +46,16 @@ import {
 } from '../../store/stories';
 import {useUndoableStoriesContext} from '../../store/undoable-stories';
 import {
+	compileBlockFragment,
 	compileStateInitialization,
 	compileVisualPassage,
-	migrateVisualContent
+	migrateVisualContent,
+	sanitizeVariableName,
+	serializeExpressionToCode
 } from '../../util/visual-passage';
+import {analyzeExpression} from '../../util/expression-analysis';
 import {defaultValueForState, StateValueInput} from '../story-states';
+import {PassageVisualRunDrawer} from './passage-visual-run-drawer';
 import './passage-visual-editor.css';
 
 /** Metadata describing one block kind, used by the shared block shell. */
@@ -77,6 +85,10 @@ const blockKindMeta: Record<VisualBlock['kind'], BlockKindMeta> = {
 		icon: IconVariable,
 		labelKey: 'dialogs.passageEdit.visual.blockKindVariable'
 	},
+	set: {
+		icon: IconVariablePlus,
+		labelKey: 'dialogs.passageEdit.visual.blockKindSet'
+	},
 	include: {
 		icon: IconFileImport,
 		labelKey: 'dialogs.passageEdit.visual.blockKindInclude'
@@ -99,52 +111,280 @@ const blockKindMeta: Record<VisualBlock['kind'], BlockKindMeta> = {
 	}
 };
 
-/** A value a state can hold during simulation; list states hold string[]. */
-type SimulatedValue = boolean | number | string | string[];
+/** One entry in the module selector, grouped by the doc 7.1 table. */
+interface ModuleEntry {
+	kind: VisualBlock['kind'];
+	/** Translated Chinese/English module name. */
+	labelKey: string;
+	/** Technical aliases matched by the selector search. */
+	aliases: string[];
+	/** One-line description key. */
+	descriptionKey: string;
+}
+
+const moduleGroups: {titleKey: string; entries: ModuleEntry[]}[] = [
+	{
+		titleKey: 'dialogs.passageEdit.visual.selectorGroupCommon',
+		entries: [
+			{
+				kind: 'text',
+				labelKey: 'dialogs.passageEdit.visual.blockKindText',
+				aliases: ['text'],
+				descriptionKey: 'dialogs.passageEdit.visual.moduleTextDescription'
+			},
+			{
+				kind: 'choice',
+				labelKey: 'dialogs.passageEdit.visual.blockKindChoice',
+				aliases: ['choice'],
+				descriptionKey:
+					'dialogs.passageEdit.visual.moduleChoiceDescription'
+			},
+			{
+				kind: 'branch',
+				labelKey: 'dialogs.passageEdit.visual.blockKindBranch',
+				aliases: ['if'],
+				descriptionKey: 'dialogs.passageEdit.visual.moduleBranchDescription'
+			},
+			{
+				kind: 'set',
+				labelKey: 'dialogs.passageEdit.visual.blockKindSet',
+				aliases: ['set', 'variable'],
+				descriptionKey: 'dialogs.passageEdit.visual.moduleSetDescription'
+			}
+		]
+	},
+	{
+		titleKey: 'dialogs.passageEdit.visual.selectorGroupControlFlow',
+		entries: [
+			{
+				kind: 'branch',
+				labelKey: 'dialogs.passageEdit.visual.blockKindBranch',
+				aliases: ['if'],
+				descriptionKey: 'dialogs.passageEdit.visual.moduleBranchDescription'
+			},
+			{
+				kind: 'switch',
+				labelKey: 'dialogs.passageEdit.visual.blockKindSwitch',
+				aliases: ['switch'],
+				descriptionKey: 'dialogs.passageEdit.visual.moduleSwitchDescription'
+			},
+			{
+				kind: 'loop',
+				labelKey: 'dialogs.passageEdit.visual.blockKindLoop',
+				aliases: ['for', 'each', 'loop', 'list'],
+				descriptionKey: 'dialogs.passageEdit.visual.moduleLoopDescription'
+			}
+		]
+	},
+	{
+		titleKey: 'dialogs.passageEdit.visual.selectorGroupContentReuse',
+		entries: [
+			{
+				kind: 'variable',
+				labelKey: 'dialogs.passageEdit.visual.blockKindVariable',
+				aliases: ['variable', 'show', 'print'],
+				descriptionKey:
+					'dialogs.passageEdit.visual.moduleVariableDescription'
+			},
+			{
+				kind: 'include',
+				labelKey: 'dialogs.passageEdit.visual.blockKindInclude',
+				aliases: ['include', 'passage'],
+				descriptionKey: 'dialogs.passageEdit.visual.moduleIncludeDescription'
+			}
+		]
+	},
+	{
+		titleKey: 'dialogs.passageEdit.visual.selectorGroupInteractionActions',
+		entries: [
+			{
+				kind: 'interaction',
+				labelKey: 'dialogs.passageEdit.visual.blockKindInteraction',
+				aliases: ['reveal', 'append', 'remove', 'link', 'interaction'],
+				descriptionKey:
+					'dialogs.passageEdit.visual.moduleInteractionDescription'
+			}
+		]
+	},
+	{
+		titleKey: 'dialogs.passageEdit.visual.selectorGroupAdvanced',
+		entries: [
+			{
+				kind: 'raw',
+				labelKey: 'dialogs.passageEdit.visual.blockKindRaw',
+				aliases: ['raw', 'sugar', 'source', 'sugarcube'],
+				descriptionKey: 'dialogs.passageEdit.visual.moduleRawDescription'
+			}
+		]
+	}
+];
 
 /**
- * Evaluates a condition against a simulated state value. A condition whose
- * state no longer exists evaluates to true so it never hides a block.
- * greaterThan/lessThan are only meaningful for numeric values; non-numeric
- * inputs are coerced with Number(). includes/notIncludes only apply to
- * arrays; a non-array simulated value evaluates to true so it never hides a
- * block.
+ * Whether a module entry can be inserted. 遍历列表 (loop) is disabled when the
+ * story has no list variables yet.
  */
-export function evaluateCondition(
-	condition: VisualCondition,
-	state: VisualStoryState | undefined,
-	simulatedValue: SimulatedValue
-): boolean {
-	if (!state) {
-		return true;
+function moduleEntryDisabled(
+	entry: ModuleEntry,
+	states: VisualStoryState[]
+) {
+	return entry.kind === 'loop' && !states.some(state => state.type === 'list');
+}
+
+/**
+ * Walks a visual block tree and returns a map from each block's id to the
+ * translated kind label plus a short display id, used by the 运行检查 trace
+ * list so trace entries can be labelled and their blocks selected.
+ */
+function collectBlockKinds(
+	blocks: VisualBlock[],
+	t: TFunction
+): Record<string, {kindLabel: string; shortId: string}> {
+	const result: Record<string, {kindLabel: string; shortId: string}> = {};
+
+	function visit(list: VisualBlock[]) {
+		list.forEach(block => {
+			result[block.id] = {
+				kindLabel: t(blockKindMeta[block.kind].labelKey),
+				shortId: block.id.slice(0, 8)
+			};
+
+			if (block.kind === 'branch') {
+				block.branches.forEach(branch => visit(branch.blocks));
+			} else if (block.kind === 'switch') {
+				block.cases.forEach(item => visit(item.blocks));
+				visit(block.defaultBlocks);
+			} else if (block.kind === 'loop') {
+				visit(block.blocks);
+			}
+		});
 	}
 
-	switch (condition.operator) {
-		case 'equals':
-			return simulatedValue === condition.value;
-		case 'notEquals':
-			return simulatedValue !== condition.value;
-		case 'greaterThan':
-			return Number(simulatedValue) > Number(condition.value);
-		case 'lessThan':
-			return Number(simulatedValue) < Number(condition.value);
-		case 'includes': {
-			const items = Array.isArray(simulatedValue) ? simulatedValue : undefined;
+	visit(blocks);
 
-			return !items || items.includes(String(condition.value));
+	return result;
+}
+
+/** A value a state can hold during simulation; list states hold string[]. */
+type SimulatedValue = boolean | number | string | string[];
+/** Renders a visual expression as a short human-readable string. */
+export function expressionToText(
+	expr: VisualExpression,
+	states: VisualStoryState[]
+): string {
+	switch (expr.kind) {
+		case 'literal':
+			return String(expr.value);
+		case 'loopItem':
+			return '_item';
+		case 'free':
+			return expr.code;
+		case 'variable': {
+			const state = states.find(item => item.id === expr.variableId);
+
+			return state?.name ?? '?';
 		}
-		case 'notIncludes': {
-			const items = Array.isArray(simulatedValue) ? simulatedValue : undefined;
+		case 'unary':
+			return `!${expressionToText(expr.operand, states)}`;
+		case 'binary': {
+			const operator =
+				expr.operator === 'includes'
+					? 'includes'
+					: expr.operator === 'notIncludes'
+						? 'not includes'
+						: expr.operator;
 
-			return !items || !items.includes(String(condition.value));
+			return `${expressionToText(expr.left, states)} ${operator} ${expressionToText(
+				expr.right,
+				states
+			)}`;
 		}
 	}
 }
 
-function conditionOperatorSymbol(
-	operator: VisualCondition['operator'],
-	t: TFunction
-) {
+/**
+ * Evaluates a visual expression against simulated state values. Structured
+ * nodes are evaluated with JavaScript semantics; `loopItem` and `free`
+ * expressions cannot be determined and return undefined. An undefined result
+ * means "cannot determine" and must never hide a block.
+ */
+export function evaluateExpression(
+	expr: VisualExpression,
+	states: VisualStoryState[],
+	simulated: Record<string, SimulatedValue>
+): boolean | undefined {
+	const value = evalExpr(expr, states, simulated);
+
+	return value === undefined ? undefined : Boolean(value);
+}
+
+function evalExpr(
+	expr: VisualExpression,
+	states: VisualStoryState[],
+	simulated: Record<string, SimulatedValue>
+): boolean | number | string | string[] | undefined {
+	switch (expr.kind) {
+		case 'literal':
+			return expr.value;
+		case 'loopItem':
+		case 'free':
+			return undefined;
+		case 'variable': {
+			if (simulated[expr.variableId] !== undefined) {
+				return simulated[expr.variableId];
+			}
+
+			const state = states.find(item => item.id === expr.variableId);
+
+			return state ? (state.defaultValue as boolean | number | string | string[]) : undefined;
+		}
+		case 'unary': {
+			const operand = evalExpr(expr.operand, states, simulated);
+
+			return operand === undefined ? undefined : !operand;
+		}
+		case 'binary': {
+			const left = evalExpr(expr.left, states, simulated);
+			const right = evalExpr(expr.right, states, simulated);
+
+			if (left === undefined || right === undefined) {
+				return undefined;
+			}
+
+			switch (expr.operator) {
+				case '&&':
+					return Boolean(left) && Boolean(right);
+				case '||':
+					return Boolean(left) || Boolean(right);
+				case '+':
+					return (left as number) + (right as number);
+				case '-':
+					return (left as number) - (right as number);
+				case '==':
+					return left == right;
+				case '!=':
+					return left != right;
+				case '>':
+					return Number(left) > Number(right);
+				case '>=':
+					return Number(left) >= Number(right);
+				case '<':
+					return Number(left) < Number(right);
+				case '<=':
+					return Number(left) <= Number(right);
+				case 'includes':
+					return Array.isArray(left)
+						? left.includes(String(right))
+						: undefined;
+				case 'notIncludes':
+					return Array.isArray(left)
+						? !left.includes(String(right))
+						: undefined;
+			}
+		}
+	}
+}
+
+function operatorSymbol(operator: VisualBinaryOperator, t: TFunction) {
 	if (operator === 'includes') {
 		return t('dialogs.passageEdit.visual.operatorIncludes');
 	}
@@ -153,38 +393,26 @@ function conditionOperatorSymbol(
 		return t('dialogs.passageEdit.visual.operatorNotIncludes');
 	}
 
-	const symbols = {
-		equals: '=',
-		notEquals: '≠',
-		greaterThan: '>',
-		lessThan: '<'
-	} as const;
-
-	return symbols[operator];
-}
-
-function conditionValueText(value: boolean | number | string) {
-	return String(value);
-}
-
-function conditionInterpolation(
-	t: TFunction,
-	condition: VisualCondition,
-	states: VisualStoryState[]
-) {
-	const state = states.find(item => item.id === condition.stateId);
-
-	return {
-		operator: conditionOperatorSymbol(condition.operator, t),
-		state: state?.name ?? '?',
-		value: conditionValueText(condition.value)
+	const symbols: Partial<Record<VisualBinaryOperator, string>> = {
+		'==': '=',
+		'!=': '≠',
+		'>': '>',
+		'>=': '≥',
+		'<': '<',
+		'<=': '≤',
+		'&&': '&&',
+		'||': '||',
+		'+': '+',
+		'-': '-'
 	};
+
+	return symbols[operator] ?? operator;
 }
 
-/** Human-readable sentence for a condition, e.g. 'When Door is yes'. */
+/** Human-readable sentence for a gate expression, e.g. 'When Door is yes'. */
 export function conditionSentenceText(
 	t: TFunction,
-	condition: VisualCondition,
+	condition: VisualExpression,
 	states: VisualStoryState[]
 ) {
 	return t(
@@ -196,13 +424,42 @@ export function conditionSentenceText(
 /** Annotation shown on blocks hidden by the simulator. */
 export function hiddenBecauseText(
 	t: TFunction,
-	condition: VisualCondition,
+	condition: VisualExpression,
 	states: VisualStoryState[]
 ) {
 	return t(
 		'dialogs.passageEdit.visual.hiddenBecause',
 		conditionInterpolation(t, condition, states)
 	);
+}
+
+function conditionInterpolation(
+	t: TFunction,
+	condition: VisualExpression,
+	states: VisualStoryState[]
+) {
+	// The sentence template expects a {state, operator, value} three-piece. For
+	// a simple binary editor expression we break it apart; anything else falls
+	// back to the full expression text.
+	if (condition.kind === 'binary') {
+		const {left, right} = condition;
+
+		if (left.kind === 'variable' && right.kind === 'literal') {
+			const state = states.find(item => item.id === left.variableId);
+
+			return {
+				operator: operatorSymbol(condition.operator, t),
+				state: state?.name ?? '?',
+				value: String(right.value)
+			};
+		}
+	}
+
+	return {
+		operator: '',
+		state: expressionToText(condition, states),
+		value: ''
+	};
 }
 
 function actionOperationWord(
@@ -273,10 +530,7 @@ function activeBranchIndex(
 			continue;
 		}
 
-		const state = states.find(item => item.id === condition.stateId);
-		const value = simulated[condition.stateId] ?? state?.defaultValue ?? '';
-
-		if (evaluateCondition(condition, state, value)) {
+		if (evaluateExpression(condition, states, simulated)) {
 			return index;
 		}
 	}
@@ -315,7 +569,7 @@ function activeSwitchCaseIndex(
 
 /** True when a block with `condition` is hidden by the simulated values. */
 function blockIsHidden(
-	condition: VisualCondition | undefined,
+	condition: VisualExpression | undefined,
 	states: VisualStoryState[],
 	simulated?: Record<string, SimulatedValue>
 ) {
@@ -323,10 +577,8 @@ function blockIsHidden(
 		return false;
 	}
 
-	const state = states.find(item => item.id === condition.stateId);
-	const value = simulated[condition.stateId] ?? state?.defaultValue ?? '';
-
-	return !evaluateCondition(condition, state, value);
+	// An expression we cannot determine (undefined) must not hide the block.
+	return evaluateExpression(condition, states, simulated) === false;
 }
 
 /**
@@ -415,13 +667,150 @@ function useDebouncedSave<T>(
 	return [value, schedule, flush];
 }
 
+/** A simple binary gate expression the condition editor produces. */
+type SimpleCondition = {
+	kind: 'binary';
+	operator: VisualBinaryOperator;
+	left: {kind: 'variable'; variableId: string};
+	right: {kind: 'literal'; value: boolean | number | string};
+};
+
+function simpleCondition(
+	variableId: string,
+	operator: VisualBinaryOperator,
+	value: boolean | number | string
+): SimpleCondition {
+	return {
+		kind: 'binary',
+		operator,
+		left: {kind: 'variable', variableId},
+		right: {kind: 'literal', value}
+	};
+}
+
+/** True when the expression is exactly the simple binary shape. */
+function isSimpleCondition(
+	condition?: VisualExpression
+): condition is SimpleCondition {
+	return Boolean(
+		condition &&
+			condition.kind === 'binary' &&
+			condition.left.kind === 'variable' &&
+			condition.right.kind === 'literal'
+	);
+}
+
+/** Serializes the simple builder shape into a free-code string. */
+function serializeSimpleToCode(condition: SimpleCondition, states: VisualStoryState[]) {
+	const code = serializeExpressionToCode(condition, states);
+
+	return code ?? expressionToText(condition, states);
+}
+
+/**
+ * Parses a free-code string back into the simple builder shape when it matches
+ * `($var op literal)` (the exact output of serializeSimpleToCode). Returns
+ * undefined when the string uses advanced syntax or is not parseable.
+ */
+function parseSimpleFromCode(
+	code: string,
+	states: VisualStoryState[]
+): SimpleCondition | undefined {
+	const trimmed = code.trim();
+	const match = /^\(\s*\$([a-zA-Z_][a-zA-Z0-9_]*)\s*(==|!=|>|>=|<|<=)\s*(.*)\)$/.exec(
+		trimmed
+	);
+	const includesMatch = /^\(\s*\$([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\.includes\(\s*(.*)\)$/.exec(
+		trimmed
+	);
+	const notIncludesMatch = /^!\(\s*\$([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\.includes\(\s*(.*)\)$/.exec(
+		trimmed
+	);
+
+	if (!match && !includesMatch && !notIncludesMatch) {
+		return undefined;
+	}
+
+	const name = match?.[1] ?? includesMatch?.[1] ?? notIncludesMatch![1];
+	const state = states.find(item => sanitizeVariableName(item.name) === name);
+
+	if (!state) {
+		return undefined;
+	}
+
+	const rawValue =
+		match?.[3] ?? includesMatch?.[2] ?? notIncludesMatch![2];
+
+	// The serialize output wraps values with JSON.stringify.
+	let value: boolean | number | string;
+
+	if (rawValue === 'true') {
+		value = true;
+	} else if (rawValue === 'false') {
+		value = false;
+	} else if (/^-?\d+$/.test(rawValue)) {
+		value = Number(rawValue);
+	} else if (/^".*"$/.test(rawValue)) {
+		value = rawValue.slice(1, -1);
+	} else {
+		return undefined;
+	}
+
+	let operator: VisualBinaryOperator;
+
+	if (includesMatch) {
+		operator = 'includes';
+	} else if (notIncludesMatch) {
+		operator = 'notIncludes';
+	} else {
+		operator = match![2] as VisualBinaryOperator;
+	}
+
+	return simpleCondition(state.id, operator, value);
+}
+
 function ConditionEditor(props: {
-	condition?: VisualCondition;
-	onChange: (condition?: VisualCondition) => void;
+	condition?: VisualExpression;
+	onChange: (condition?: VisualExpression) => void;
 	states: VisualStoryState[];
 }) {
 	const {condition, onChange, states} = props;
 	const {t} = useTranslation();
+
+	// Whether the stored expression is the simple builder shape.
+	const simple = isSimpleCondition(condition) ? condition : undefined;
+	const startsInExpression =
+		condition !== undefined && simple === undefined;
+	const [mode, setMode] = React.useState<'builder' | 'expression'>(
+		startsInExpression ? 'expression' : 'builder'
+	);
+	const [freeCode, setFreeCode] = React.useState(
+		simple && condition
+			? serializeSimpleToCode(simple, states)
+			: condition?.kind === 'free'
+				? condition.code
+				: ''
+	);
+
+	// When the stored expression arrives (or changes) into a non-simple shape,
+	// force the editor back to expression mode with its code.
+	React.useEffect(() => {
+		if (!condition) {
+			return;
+		}
+
+		if (isSimpleCondition(condition)) {
+			setFreeCode(serializeSimpleToCode(condition, states));
+		} else if (condition.kind === 'free') {
+			setFreeCode(condition.code);
+			setMode('expression');
+		} else {
+			// Advanced structured (unary/compound) expression: keep it but it
+			// can only be edited in expression mode.
+			setFreeCode(expressionToText(condition, states));
+			setMode('expression');
+		}
+	}, [condition, states]);
 
 	if (!condition) {
 		return (
@@ -430,11 +819,13 @@ function ConditionEditor(props: {
 					disabled={states.length === 0}
 					onClick={() => {
 						const state = states[0];
-						onChange({
-							operator: 'equals',
-							stateId: state.id,
-							value: stateValuePlaceholder(state)
-						});
+						onChange(
+							simpleCondition(
+								state.id,
+								state.type === 'list' ? 'includes' : '==',
+								stateValuePlaceholder(state)
+							)
+						);
 					}}
 					type="button"
 				>
@@ -449,7 +840,96 @@ function ConditionEditor(props: {
 		);
 	}
 
-	const state = states.find(item => item.id === condition.stateId);
+	return (
+		<div className="condition-editor-wrap">
+			<div className="condition-editor-tabs">
+				<button
+					className={mode === 'builder' ? 'is-active' : undefined}
+					disabled={!simple}
+					onClick={() => {
+						// Builder mode edits the stored simple shape directly.
+						if (simple) {
+							setMode('builder');
+							return;
+						}
+
+						// Expression -> builder is only offered when the free
+						// code parses back to the simple shape.
+						const parsed = parseSimpleFromCode(freeCode, states);
+
+						if (parsed) {
+							onChange(parsed);
+							setMode('builder');
+						}
+					}}
+					type="button"
+				>
+					{t('dialogs.passageEdit.visual.builderMode')}
+				</button>
+				<button
+					className={mode === 'expression' ? 'is-active' : undefined}
+					onClick={() => {
+						// Builder -> expression: serialize the structured shape.
+						if (simple) {
+							setFreeCode(serializeSimpleToCode(simple, states));
+						}
+						setMode('expression');
+					}}
+					type="button"
+				>
+					{t('dialogs.passageEdit.visual.expressionMode')}
+				</button>
+			</div>
+
+			{!simple && (
+				<p className="empty-state advanced-syntax-note">
+					{t('dialogs.passageEdit.visual.advancedSyntaxNote')}
+				</p>
+			)}
+
+			{mode === 'builder' && simple && (
+				<BuilderCondition
+					condition={simple}
+					onChange={onChange}
+					states={states}
+				/>
+			)}
+
+			{mode === 'expression' && (
+				<div className="condition-expression">
+					<textarea
+						aria-label={t('dialogs.passageEdit.visual.expressionSymbol')}
+						onChange={event => {
+							const value = event.target.value;
+							setFreeCode(value);
+							onChange({kind: 'free', code: value});
+						}}
+						rows={2}
+						value={freeCode}
+					/>
+					<button onClick={() => onChange(undefined)} type="button">×</button>
+				</div>
+			)}
+
+			<ConditionFeedback condition={condition} states={states} />
+		</div>
+	);
+}
+
+/** The builder-mode editor body (variable, operator, literal). */
+function BuilderCondition(props: {
+	condition: SimpleCondition;
+	onChange: (condition?: VisualExpression) => void;
+	states: VisualStoryState[];
+}) {
+	const {condition, onChange, states} = props;
+	const {t} = useTranslation();
+	const variableId = condition.left.variableId;
+	const state = states.find(item => item.id === variableId);
+
+	function update(next: SimpleCondition) {
+		onChange(next);
+	}
 
 	return (
 		<>
@@ -460,13 +940,17 @@ function ConditionEditor(props: {
 						const nextState = states.find(
 							item => item.id === event.target.value
 						);
-						onChange({
-							...condition,
-							stateId: event.target.value,
-							value: stateValuePlaceholder(nextState)
-						});
+						const nextOperator =
+							nextState?.type === 'list' ? 'includes' : '==';
+						update(
+							simpleCondition(
+								event.target.value,
+								nextOperator,
+								stateValuePlaceholder(nextState)
+							)
+						);
 					}}
-					value={condition.stateId}
+					value={variableId}
 				>
 					{states.map(item => (
 						<option key={item.id} value={item.id}>{item.name}</option>
@@ -475,21 +959,19 @@ function ConditionEditor(props: {
 				<select
 					aria-label={t('dialogs.passageEdit.visual.conditionOperator')}
 					onChange={event =>
-						onChange({
+						update({
 							...condition,
-							operator: event.target.value as VisualCondition['operator']
+							operator: event.target.value as VisualBinaryOperator
 						})
 					}
 					value={condition.operator}
 				>
-					<option value="equals">=</option>
-					<option value="notEquals">≠</option>
-					{state?.type === 'number' && (
-						<option value="greaterThan">&gt;</option>
-					)}
-					{state?.type === 'number' && (
-						<option value="lessThan">&lt;</option>
-					)}
+					<option value="==">=</option>
+					<option value="!=">≠</option>
+					{state?.type === 'number' && <option value=">">&gt;</option>}
+					{state?.type === 'number' && <option value=">=">&ge;</option>}
+					{state?.type === 'number' && <option value="<">&lt;</option>}
+					{state?.type === 'number' && <option value="<=">&le;</option>}
 					{state?.type === 'list' && (
 						<option value="includes">
 							{t('dialogs.passageEdit.visual.operatorIncludes')}
@@ -503,9 +985,14 @@ function ConditionEditor(props: {
 				</select>
 				<StateValueInput
 					label={t('dialogs.passageEdit.visual.conditionValue')}
-					onChange={value => onChange({...condition, value})}
+					onChange={value =>
+						update({
+							...condition,
+							right: {kind: 'literal', value}
+						})
+					}
 					state={state}
-					value={condition.value}
+					value={condition.right.value}
 				/>
 				<button onClick={() => onChange(undefined)} type="button">×</button>
 			</div>
@@ -513,6 +1000,55 @@ function ConditionEditor(props: {
 				{conditionSentenceText(t, condition, states)}
 			</p>
 		</>
+	);
+}
+
+/**
+ * Instant feedback shown under every condition: the current simulated test
+ * value, the variables the expression reads, and a warning for any referenced
+ * state that is missing from the story.
+ */
+function ConditionFeedback(props: {
+	condition: VisualExpression;
+	states: VisualStoryState[];
+}) {
+	const {condition, states} = props;
+	const {t} = useTranslation();
+	const analysis = analyzeExpression(condition, states);
+	const missingIds = analysis.unknown
+		? []
+		: analysis.variableIds.filter(
+				id => !states.some(state => state.id === id)
+			);
+	const variableNames = analysis.variableIds.map(
+		id => states.find(state => state.id === id)?.name ?? '?'
+	);
+
+	const value = evaluateExpression(condition, states, {});
+
+	return (
+		<div className="condition-feedback">
+			<p className="empty-state">
+				<strong>{t('dialogs.passageEdit.visual.currentTestValue')}:</strong>{' '}
+				{value === undefined
+					? t('dialogs.passageEdit.visual.unableToDetermine')
+					: String(value)}
+			</p>
+			<p className="empty-state">
+				<strong>{t('dialogs.passageEdit.visual.readsVariables')}:</strong>{' '}
+				{analysis.unknown
+					? t('dialogs.passageEdit.visual.unableToDetermine')
+					: variableNames.length > 0
+						? variableNames.join(', ')
+						: '—'}
+			</p>
+			{missingIds.length > 0 && (
+				<p className="condition-warning">
+					{t('dialogs.passageEdit.visual.undefinedVariable')}:{' '}
+					{missingIds.join(', ')}
+				</p>
+			)}
+		</div>
 	);
 }
 
@@ -855,6 +1391,270 @@ const VariableEditor: React.FC<VariableEditorProps> = props => {
 	);
 };
 
+interface SetBlockEditorProps {
+	block: VisualSetBlock;
+	disabled?: boolean;
+	onUpdate: (props: Partial<VisualSetBlock>) => void;
+	states: VisualStoryState[];
+}
+
+/** The source kind shown in the set block's value-source select. */
+type SetValueSource = 'constant' | 'variable' | 'loopItem' | 'free';
+
+/** Maps a stored value expression to the matching source kind. */
+function setValueSourceOf(expr: VisualExpression): SetValueSource {
+	switch (expr.kind) {
+		case 'literal':
+			return 'constant';
+		case 'variable':
+			return 'variable';
+		case 'loopItem':
+			return 'loopItem';
+		default:
+			return 'free';
+	}
+}
+
+const SetBlockEditor: React.FC<SetBlockEditorProps> = props => {
+	const {block, disabled, onUpdate, states} = props;
+	const {t} = useTranslation();
+	const state = states.find(item => item.id === block.variableId);
+	const source = setValueSourceOf(block.value);
+	const [freeCode, setFreeCode] = React.useState(
+		block.value.kind === 'free' ? block.value.code : ''
+	);
+
+	function setValue(value: VisualExpression) {
+		onUpdate({value});
+	}
+
+	// The "before -> after" test result line.
+	const testResult = setTestResult(block, state, states);
+
+	return (
+		<div className="visual-passage-set">
+			<label>
+				<span>{t('dialogs.passageEdit.visual.setVariable')}</span>
+				<select
+					aria-label={t('dialogs.passageEdit.visual.setVariable')}
+					disabled={disabled || states.length === 0}
+					onChange={event => onUpdate({variableId: event.target.value})}
+					value={block.variableId}
+				>
+					<option value="">
+						{t('dialogs.passageEdit.visual.chooseState')}
+					</option>
+					{states.map(item => (
+						<option key={item.id} value={item.id}>{item.name}</option>
+					))}
+				</select>
+			</label>
+			{block.variableId === '' && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.blockIncomplete')}
+				</p>
+			)}
+			<label>
+				<span>{t('dialogs.passageEdit.visual.setOperation')}</span>
+				<select
+					aria-label={t('dialogs.passageEdit.visual.setOperation')}
+					disabled={disabled}
+					onChange={event =>
+						onUpdate({
+							operation: event.target.value as VisualSetBlock['operation']
+						})
+					}
+					value={block.operation}
+				>
+					<option value="=">=</option>
+					<option value="+=">+=</option>
+					<option value="-=">-=</option>
+				</select>
+			</label>
+			<label>
+				<span>{t('dialogs.passageEdit.visual.valueSource')}</span>
+				<select
+					aria-label={t('dialogs.passageEdit.visual.valueSource')}
+					disabled={disabled}
+					onChange={event => {
+						const next = event.target.value as SetValueSource;
+
+						if (next === 'constant') {
+							setValue({kind: 'literal', value: stateValuePlaceholder(state)});
+						} else if (next === 'variable') {
+							setValue({
+								kind: 'variable',
+								variableId: states[0]?.id ?? ''
+							});
+						} else if (next === 'loopItem') {
+							setValue({kind: 'loopItem'});
+						} else {
+							setValue({kind: 'free', code: freeCode});
+						}
+					}}
+					value={source}
+				>
+					<option value="constant">
+						{t('dialogs.passageEdit.visual.valueSourceConstant')}
+					</option>
+					<option value="variable">
+						{t('dialogs.passageEdit.visual.valueSourceVariable')}
+					</option>
+					<option value="loopItem">
+						{t('dialogs.passageEdit.visual.valueSourceLoopItem')}
+					</option>
+					<option value="free">
+						{t('dialogs.passageEdit.visual.valueSourceFreeExpression')}
+					</option>
+				</select>
+			</label>
+			{source === 'constant' && (
+				<label>
+					<span>{t('dialogs.passageEdit.visual.setValue')}</span>
+					<StateValueInput
+						label={t('dialogs.passageEdit.visual.setValue')}
+						onChange={value => setValue({kind: 'literal', value})}
+						state={state}
+						value={
+							block.value.kind === 'literal'
+								? (block.value.value as boolean | number | string)
+								: stateValuePlaceholder(state)
+						}
+					/>
+				</label>
+			)}
+			{source === 'variable' && (
+				<label>
+					<span>{t('dialogs.passageEdit.visual.valueSourceVariable')}</span>
+					<select
+						aria-label={t('dialogs.passageEdit.visual.valueSourceVariable')}
+						disabled={disabled}
+						onChange={event =>
+							setValue({kind: 'variable', variableId: event.target.value})
+						}
+						value={
+							block.value.kind === 'variable' ? block.value.variableId : ''
+						}
+					>
+						{states.map(item => (
+							<option key={item.id} value={item.id}>{item.name}</option>
+						))}
+					</select>
+				</label>
+			)}
+			{source === 'loopItem' && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.loopItemValueHint')}
+				</p>
+			)}
+			{source === 'free' && (
+				<label>
+					<span>{t('dialogs.passageEdit.visual.valueFreeExpression')}</span>
+					<input
+						aria-label={t('dialogs.passageEdit.visual.valueFreeExpression')}
+						disabled={disabled}
+						onChange={event => {
+							const value = event.target.value;
+							setFreeCode(value);
+							setValue({kind: 'free', code: value});
+						}}
+						value={freeCode}
+					/>
+				</label>
+			)}
+			<p className="set-summary">
+				{setStructureSummary(block, states)}
+				{block.condition && (
+					<>
+						{' · '}
+						{t('dialogs.passageEdit.visual.executionCondition')}:{' '}
+						{conditionSentenceText(t, block.condition, states)}
+					</>
+				)}
+			</p>
+			{testResult !== undefined && (
+				<p className="set-test-result empty-state">
+					<strong>{t('dialogs.passageEdit.visual.testResult')}:</strong>{' '}
+					{testResult.before === null
+						? t('dialogs.passageEdit.visual.unableToDetermine')
+						: `${String(testResult.before)} -> ${String(testResult.after)}`}
+				</p>
+			)}
+			<div>
+				<span>{t('dialogs.passageEdit.visual.condition')}</span>
+				<ConditionEditor
+					condition={block.condition}
+					onChange={condition => onUpdate({condition})}
+					states={states}
+				/>
+			</div>
+		</div>
+	);
+};
+
+/**
+ * Estimates the "before -> after" test result of a set block. The "before"
+ * value is the target variable's default, and "after" is computed by applying
+ * the = / += / -= operation, resolving variable references to their defaults.
+ * Returns undefined when nothing can be shown; a null `before` means the value
+ * cannot be determined (e.g. it uses an advanced free expression).
+ */
+function setTestResult(
+	block: VisualSetBlock,
+	state: VisualStoryState | undefined,
+	states: VisualStoryState[]
+): {before: boolean | number | string | string[] | null; after: string | number} | undefined {
+	if (!state) {
+		return undefined;
+	}
+
+	const before = state.defaultValue as boolean | number | string | string[];
+
+	if (block.value.kind === 'free') {
+		return {before: null, after: ''};
+	}
+
+	// Seed simulated values from each state's default so variable references
+	// inside the value expression resolve deterministically.
+	const simulated: Record<string, SimulatedValue> = {};
+
+	states.forEach(item => {
+		simulated[item.id] = item.defaultValue as SimulatedValue;
+	});
+
+	const evaluated = evalExpr(block.value, states, simulated);
+
+	if (evaluated === undefined) {
+		return {before: null, after: ''};
+	}
+
+	if (block.operation === '=') {
+		return {before, after: evaluated as string | number};
+	}
+
+	const num = Number(before);
+	const delta = Number(evaluated) || 0;
+
+	return {
+		before,
+		after: block.operation === '+=' ? num + delta : num - delta
+	};
+}
+
+function setStructureSummary(
+	block: VisualSetBlock,
+	states: VisualStoryState[]
+): string {
+	const state = states.find(item => item.id === block.variableId);
+	const name = state ? visualStateName(state) : '?';
+
+	return `${name} ${block.operation} ${expressionToText(block.value, states)}`;
+}
+
+function visualStateName(state: VisualStoryState) {
+	return `$${sanitizeVariableName(state.name)}`;
+}
+
 interface RawBlockEditorProps {
 	block: VisualRawBlock;
 	disabled?: boolean;
@@ -1024,6 +1824,7 @@ interface BranchEditorProps {
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualBranchBlock>) => void;
+	selectedBlockId?: string;
 	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
@@ -1051,6 +1852,7 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 		onSaveFlushed,
 		onSavePending,
 		onUpdate,
+		selectedBlockId,
 		simulated,
 		states,
 		story
@@ -1152,6 +1954,7 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 							onChange={blocks => updateBranch(index, {blocks})}
 							onSaveFlushed={onSaveFlushed}
 							onSavePending={onSavePending}
+							selectedBlockId={selectedBlockId}
 							simulated={simulated}
 							states={states}
 							story={story}
@@ -1173,6 +1976,7 @@ interface SwitchBlockEditorProps {
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualSwitchBlock>) => void;
+	selectedBlockId?: string;
 	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
@@ -1193,6 +1997,7 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 		onSaveFlushed,
 		onSavePending,
 		onUpdate,
+		selectedBlockId,
 		simulated,
 		states,
 		story
@@ -1277,6 +2082,7 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 							onChange={blocks => updateCase(index, {blocks})}
 							onSaveFlushed={onSaveFlushed}
 							onSavePending={onSavePending}
+							selectedBlockId={selectedBlockId}
 							simulated={simulated}
 							states={states}
 							story={story}
@@ -1302,6 +2108,7 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 					onChange={blocks => onUpdate({defaultBlocks: blocks})}
 					onSaveFlushed={onSaveFlushed}
 					onSavePending={onSavePending}
+					selectedBlockId={selectedBlockId}
 					simulated={simulated}
 					states={states}
 					story={story}
@@ -1326,6 +2133,7 @@ interface LoopBlockEditorProps {
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualLoopBlock>) => void;
+	selectedBlockId?: string;
 	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
@@ -1343,6 +2151,7 @@ const LoopBlockEditor: React.FC<LoopBlockEditorProps> = props => {
 		onSaveFlushed,
 		onSavePending,
 		onUpdate,
+		selectedBlockId,
 		simulated,
 		states,
 		story
@@ -1390,6 +2199,7 @@ const LoopBlockEditor: React.FC<LoopBlockEditorProps> = props => {
 					onChange={blocks => onUpdate({blocks})}
 					onSaveFlushed={onSaveFlushed}
 					onSavePending={onSavePending}
+					selectedBlockId={selectedBlockId}
 					simulated={simulated}
 					states={states}
 					story={story}
@@ -1408,10 +2218,11 @@ const LoopBlockEditor: React.FC<LoopBlockEditorProps> = props => {
 };
 
 interface BlockShellProps {
+	block: VisualBlock;
 	canMoveDown: boolean;
 	canMoveUp: boolean;
 	children: React.ReactNode;
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 	depth: number;
 	disabled?: boolean;
 	hidden: boolean;
@@ -1420,17 +2231,21 @@ interface BlockShellProps {
 	onDelete: () => void;
 	onMoveDown: () => void;
 	onMoveUp: () => void;
+	selected?: boolean;
 	states: VisualStoryState[];
+	story: Story;
 }
 
 /**
  * Shared chrome around a visual block: the header with the kind icon and
- * label, the condition gate, and the move/delete toolbar. Block kinds only
+ * label, the condition gate, and the move/delete toolbar, plus a per-block
+ * toggle that expands the SugarCube this block would generate. Block kinds only
  * supply their body editor; the shell keeps the layout identical for every
  * kind. The depth prop prepares for a later visual tree overhaul.
  */
 const BlockShell: React.FC<BlockShellProps> = props => {
 	const {
+		block,
 		canMoveDown,
 		canMoveUp,
 		children,
@@ -1443,13 +2258,27 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		onDelete,
 		onMoveDown,
 		onMoveUp,
-		states
+		selected,
+		states,
+		story
 	} = props;
 	const {t} = useTranslation();
 	const Icon = icon;
+	const [showCode, setShowCode] = React.useState(false);
+	const fragment = React.useMemo(
+		() => compileBlockFragment(block, states, story).trim(),
+		[block, states, story]
+	);
 
 	return (
-		<div className="visual-block" data-depth={depth}>
+		<div
+			className={
+				selected
+					? 'visual-block is-selected'
+					: 'visual-block'
+			}
+			data-depth={depth}
+		>
 			<div className="block-header">
 				<div className="block-gate">
 					<Icon />
@@ -1466,6 +2295,13 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 					)}
 				</div>
 				<div className="block-toolbar">
+					<IconButton
+						disabled={disabled}
+						icon={<IconCode />}
+						iconOnly
+						label={t('dialogs.passageEdit.visual.blockCode')}
+						onClick={() => setShowCode(open => !open)}
+					/>
 					<IconButton
 						disabled={disabled || !canMoveUp}
 						icon={<IconArrowUp />}
@@ -1490,6 +2326,13 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 					/>
 				</div>
 			</div>
+			{showCode && (
+				<pre className="block-code-preview">
+					{fragment === ''
+						? t('dialogs.passageEdit.visual.unableToDetermine')
+						: fragment}
+				</pre>
+			)}
 			<div
 				className={
 					hidden ? 'visual-block-body is-hidden' : 'visual-block-body'
@@ -1508,6 +2351,7 @@ interface BlockListProps {
 	onChange: (blocks: VisualBlock[]) => void;
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
+	selectedBlockId?: string;
 	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
@@ -1521,6 +2365,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 		onChange,
 		onSaveFlushed,
 		onSavePending,
+		selectedBlockId,
 		simulated,
 		states,
 		story
@@ -1586,6 +2431,19 @@ const BlockList: React.FC<BlockListProps> = props => {
 		]);
 	}
 
+	function addSetBlock() {
+		onChange([
+			...blocks,
+			{
+				id: uuid(),
+				kind: 'set',
+				operation: '=',
+				variableId: '',
+				value: {kind: 'literal', value: ''}
+			}
+		]);
+	}
+
 	function addRawBlock() {
 		onChange([...blocks, {id: uuid(), kind: 'raw', sugar: ''}]);
 	}
@@ -1630,6 +2488,33 @@ const BlockList: React.FC<BlockListProps> = props => {
 		]);
 	}
 
+	/** Inserts a fresh block of the given kind at the end of the list. */
+	function insertModule(kind: VisualBlock['kind']) {
+		if (kind === 'text') {
+			addTextBlock();
+		} else if (kind === 'choice') {
+			addChoiceBlock();
+		} else if (kind === 'branch') {
+			addBranchBlock();
+		} else if (kind === 'variable') {
+			addVariableBlock();
+		} else if (kind === 'set') {
+			addSetBlock();
+		} else if (kind === 'raw') {
+			addRawBlock();
+		} else if (kind === 'include') {
+			addIncludeBlock();
+		} else if (kind === 'interaction') {
+			addInteractionBlock();
+		} else if (kind === 'switch') {
+			addSwitchBlock();
+		} else if (kind === 'loop') {
+			addLoopBlock();
+		}
+	}
+
+	const [selectorOpen, setSelectorOpen] = React.useState(false);
+
 	return (
 		<div className="visual-block-list">
 			{blocks.map((block, index) => {
@@ -1642,6 +2527,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 
 				return (
 					<BlockShell
+						block={block}
 						canMoveDown={index < blocks.length - 1}
 						canMoveUp={index > 0}
 						condition={condition}
@@ -1654,7 +2540,9 @@ const BlockList: React.FC<BlockListProps> = props => {
 						onDelete={() => deleteBlock(index)}
 						onMoveDown={() => moveBlock(index, 1)}
 						onMoveUp={() => moveBlock(index, -1)}
+						selected={block.id === selectedBlockId}
 						states={states}
+						story={story}
 					>
 						{block.kind === 'text' && (
 							<TextBlockEditor
@@ -1692,6 +2580,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 								onUpdate={props =>
 									updateBlock(block.id, {...block, ...props})
 								}
+								selectedBlockId={selectedBlockId}
 								simulated={simulated}
 								states={states}
 								story={story}
@@ -1699,6 +2588,16 @@ const BlockList: React.FC<BlockListProps> = props => {
 						)}
 						{block.kind === 'variable' && (
 							<VariableEditor
+								block={block}
+								disabled={disabled}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+							/>
+						)}
+						{block.kind === 'set' && (
+							<SetBlockEditor
 								block={block}
 								disabled={disabled}
 								onUpdate={props =>
@@ -1748,6 +2647,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 								onUpdate={props =>
 									updateBlock(block.id, {...block, ...props})
 								}
+								selectedBlockId={selectedBlockId}
 								simulated={simulated}
 								states={states}
 								story={story}
@@ -1763,6 +2663,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 								onUpdate={props =>
 									updateBlock(block.id, {...block, ...props})
 								}
+								selectedBlockId={selectedBlockId}
 								simulated={simulated}
 								states={states}
 								story={story}
@@ -1771,70 +2672,145 @@ const BlockList: React.FC<BlockListProps> = props => {
 					</BlockShell>
 				);
 			})}
-			<div className="block-add-buttons">
+			<div className="block-add-menu">
 				<IconButton
 					disabled={disabled}
 					icon={<IconPlus />}
-					label="Add text block"
-					onClick={addTextBlock}
+					label={t('dialogs.passageEdit.visual.addModule')}
+					onClick={() => setSelectorOpen(open => !open)}
 					variant="create"
 				/>
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label={t('dialogs.passageEdit.visual.addChoice')}
-					onClick={addChoiceBlock}
-					variant="create"
-				/>
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label="Add branch"
-					onClick={addBranchBlock}
-					variant="create"
-				/>
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label={t('dialogs.passageEdit.visual.addVariableBlock')}
-					onClick={addVariableBlock}
-					variant="create"
-				/>
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label={t('dialogs.passageEdit.visual.addRawBlock')}
-					onClick={addRawBlock}
-					variant="create"
-				/>
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label={t('dialogs.passageEdit.visual.addIncludeBlock')}
-					onClick={addIncludeBlock}
-					variant="create"
-				/>
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label={t('dialogs.passageEdit.visual.addInteractionBlock')}
-					onClick={addInteractionBlock}
-					variant="create"
-				/>
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label={t('dialogs.passageEdit.visual.addSwitchBlock')}
-					onClick={addSwitchBlock}
-					variant="create"
-				/>
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label={t('dialogs.passageEdit.visual.addLoopBlock')}
-					onClick={addLoopBlock}
-					variant="create"
-				/>
+				{selectorOpen && (
+					<ModuleSelector
+						disabled={disabled}
+						onClose={() => setSelectorOpen(false)}
+						onInsert={kind => {
+							insertModule(kind);
+							setSelectorOpen(false);
+						}}
+						states={states}
+					/>
+				)}
+			</div>
+		</div>
+	);
+};
+
+interface ModuleSelectorProps {
+	disabled?: boolean;
+	onClose: () => void;
+	onInsert: (kind: VisualBlock['kind']) => void;
+	states: VisualStoryState[];
+}
+
+/**
+ * The grouped, searchable module picker opened by the single insert button.
+ * Each entry shows the translated module name, an aliased search term, and a
+ * one-line description. 遍历列表 is disabled when no list variable exists.
+ */
+const ModuleSelector: React.FC<ModuleSelectorProps> = props => {
+	const {disabled, onClose, onInsert, states} = props;
+	const {t} = useTranslation();
+	const [query, setQuery] = React.useState('');
+	const trimmedQuery = query.trim().toLowerCase();
+	const ref = React.useRef<HTMLDivElement>(null);
+
+	// Close on outside click.
+	React.useEffect(() => {
+		const onPointerDown = (event: MouseEvent) => {
+			if (ref.current && !ref.current.contains(event.target as Node)) {
+				onClose();
+			}
+		};
+
+		window.addEventListener('pointerdown', onPointerDown);
+
+		return () => window.removeEventListener('pointerdown', onPointerDown);
+	}, [onClose]);
+
+	// Flatten, filter, and group entries by the search query.
+	const groups = moduleGroups
+		.map(group => {
+			const entries = group.entries.filter(entry => {
+				if (trimmedQuery === '') {
+					return true;
+				}
+
+				const label = t(entry.labelKey).toLowerCase();
+				const aliases = entry.aliases.some(alias =>
+					alias.toLowerCase().includes(trimmedQuery)
+				);
+
+				return label.includes(trimmedQuery) || aliases;
+			});
+
+			return {titleKey: group.titleKey, entries};
+		})
+		.filter(group => group.entries.length > 0);
+
+	return (
+		<div ref={ref} className="module-selector">
+			<input
+				aria-label={t(
+					'dialogs.passageEdit.visual.moduleSearchPlaceholder'
+				)}
+				autoFocus
+				onChange={event => setQuery(event.target.value)}
+				placeholder={t(
+					'dialogs.passageEdit.visual.moduleSearchPlaceholder'
+				)}
+				type="search"
+				value={query}
+			/>
+			<div className="module-selector-groups">
+				{groups.length === 0 ? (
+					<p className="empty-state module-no-results">
+						{t('components.passageFuzzyFinder.noResults')}
+					</p>
+				) : (
+					groups.map(group => (
+						<div className="module-group" key={group.titleKey}>
+							<h4 className="module-group-title">
+								{t(group.titleKey)}
+							</h4>
+							{group.entries.map((entry, entryIndex) => {
+								const isDisabled =
+									disabled || moduleEntryDisabled(entry, states);
+
+								return (
+									<button
+										className={
+											isDisabled
+												? 'module-entry is-disabled'
+												: 'module-entry'
+										}
+										disabled={isDisabled}
+										key={`${group.titleKey}-${entry.kind}-${entryIndex}`}
+										onClick={() => onInsert(entry.kind)}
+										title={
+											isDisabled
+												? t(
+														'dialogs.passageEdit.visual.noListStateSelectorReason'
+													)
+												: undefined
+										}
+										type="button"
+									>
+										<span className="module-entry-label">
+											{t(entry.labelKey)}
+										</span>
+										<span className="module-entry-alias">
+											{entry.aliases[0]}
+										</span>
+										<span className="module-entry-description">
+											{t(entry.descriptionKey)}
+										</span>
+									</button>
+								);
+							})}
+						</div>
+					))
+				)}
 			</div>
 		</div>
 	);
@@ -1852,6 +2828,9 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 	const {t} = useTranslation();
 	const [pendingSaves, setPendingSaves] = React.useState(0);
 	const [showSource, setShowSource] = React.useState(false);
+	const [selectedBlockId, setSelectedBlockId] = React.useState<
+		string | undefined
+	>(undefined);
 	const [simulatedValues, setSimulatedValues] = React.useState<
 		Record<string, SimulatedValue>
 	>({});
@@ -1924,6 +2903,17 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 	// The simulation view is only applied while the drawer is open.
 	const simulated = simulatorOpen ? simulatedValues : undefined;
 
+	// Id -> {kindLabel, shortId} for the run-drawer trace list, plus the
+	// fully traced compiled source shown on the SugarCube tab.
+	const blockLabelMap = React.useMemo(
+		() => collectBlockKinds(content.blocks, t),
+		[content.blocks, t]
+	);
+	const runCompiledSource = React.useMemo(
+		() => compileVisualPassage(content, story, passage.id, {trace: true}),
+		[content, passage.id, story]
+	);
+
 	return (
 		<div className="passage-visual-editor">
 			<div className="visual-editor-header">
@@ -1951,6 +2941,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 					onChange={updateBlocks}
 					onSaveFlushed={onSaveFlushed}
 					onSavePending={onSavePending}
+					selectedBlockId={selectedBlockId}
 					simulated={simulated}
 					states={states}
 					story={story}
@@ -1977,80 +2968,26 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 				)}
 			</section>
 
-			<section className="simulator-section">
+			<section className="simulator-section run-check-section">
 				<button
 					aria-expanded={simulatorOpen}
 					onClick={() => setSimulatorOpen(open => !open)}
 					type="button"
 				>
-					{t('dialogs.passageEdit.visual.simulatorToggle')}
+					{t('dialogs.passageEdit.visual.runtimeDrawer')}
 				</button>
 				{simulatorOpen && (
-					<div className="simulator-drawer">
-						{states.length === 0 ? (
-							<p className="empty-state">
-								{t('dialogs.passageEdit.visual.noStatesHint')}
-							</p>
-						) : (
-							<>
-								<h4>{t('dialogs.passageEdit.visual.simulator')}</h4>
-								{states.map(state => {
-									const value =
-										simulatedValues[state.id] ?? state.defaultValue;
-
-									return (
-										<div className="simulator-row" key={state.id}>
-											<span className="simulator-state-name">
-												{state.name}
-											</span>
-											{state.type === 'list' ? (
-												<input
-													aria-label={t(
-														'dialogs.passageEdit.visual.simulatorValue',
-														{name: state.name}
-													)}
-													onChange={event => {
-														const raw = event.target.value;
-														const items =
-															raw === ''
-																? []
-																: raw
-																		.split(',')
-																		.map(item => item.trim())
-																		.filter(item => item !== '');
-														setSimulatedValues(prev => ({
-															...prev,
-															[state.id]: items
-														}));
-													}}
-													value={
-														Array.isArray(value)
-															? value.join(', ')
-															: ''
-													}
-												/>
-											) : (
-												<StateValueInput
-													label={t(
-														'dialogs.passageEdit.visual.simulatorValue',
-														{name: state.name}
-													)}
-													onChange={value =>
-														setSimulatedValues(prev => ({
-															...prev,
-															[state.id]: value
-														}))
-													}
-													state={state}
-													value={value as boolean | number | string}
-												/>
-											)}
-										</div>
-									);
-								})}
-							</>
-						)}
-					</div>
+					<PassageVisualRunDrawer
+						blockLabelMap={blockLabelMap}
+						compiledSource={runCompiledSource}
+						onSelectBlock={setSelectedBlockId}
+						onSimulatedValuesChange={setSimulatedValues}
+						passage={passage}
+						selectedBlockId={selectedBlockId}
+						simulatedValues={simulatedValues}
+						states={states}
+						story={story}
+					/>
 				)}
 			</section>
 		</div>

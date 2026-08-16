@@ -8,7 +8,7 @@ import {
 	Passage,
 	Story,
 	VisualBlock,
-	VisualCondition,
+	VisualExpression,
 	VisualStateAction,
 	VisualStoryState,
 	updateStory
@@ -17,7 +17,8 @@ import {useUndoableStoriesContext} from '../../store/undoable-stories';
 import {
 	compileVisualPassage,
 	emptyVisualPassage,
-	migrateVisualContent
+	migrateVisualContent,
+	sanitizeVariableName
 } from '../../util/visual-passage';
 import './story-states-manager.css';
 
@@ -147,26 +148,6 @@ export function ListValueInput(props: {
 	);
 }
 
-/** True when a condition's operator makes sense for the state's type. */
-export function isConditionCompatible(
-	condition: VisualCondition,
-	state?: VisualStoryState
-) {
-	if (!state) {
-		return false;
-	}
-
-	if (condition.operator === 'greaterThan' || condition.operator === 'lessThan') {
-		return state.type === 'number';
-	}
-
-	if (condition.operator === 'includes' || condition.operator === 'notIncludes') {
-		return state.type === 'list';
-	}
-
-	return true; // equals / notEquals work for every type
-}
-
 /** True when an action's operation makes sense for the state's type. */
 export function isActionCompatible(
 	action: VisualStateAction,
@@ -192,6 +173,137 @@ export function isActionCompatible(
 }
 
 /**
+ * Pragmatic compatibility check for a gate expression. Only the simple shape
+ * produced by the condition editor — a binary comparison of a single variable
+ * against a literal — is checked against the state's type; every other shape
+ * (compound expressions, free code, missing state) is kept (unknown).
+ */
+export function isExpressionCompatible(
+	expr: VisualExpression,
+	state?: VisualStoryState
+): boolean {
+	if (!state) {
+		return true; // unknown shape rides along rather than being dropped
+	}
+
+	if (
+		expr.kind !== 'binary' ||
+		expr.left.kind !== 'variable' ||
+		expr.right.kind !== 'literal'
+	) {
+		return true;
+	}
+
+	if (expr.operator === '>' || expr.operator === '>=') {
+		return state.type === 'number';
+	}
+
+	if (expr.operator === '<' || expr.operator === '<=') {
+		return state.type === 'number';
+	}
+
+	if (expr.operator === 'includes' || expr.operator === 'notIncludes') {
+		return state.type === 'list';
+	}
+
+	// ==/!= work for every type.
+	return true;
+}
+
+/**
+ * True when an expression references the given state id. Structured nodes are
+ * walked exactly; a free expression is treated as NOT referencing (unknown),
+ * so it is never stripped on deletion.
+ */
+export function expressionReferencesVariable(
+	expr: VisualExpression,
+	stateId: string
+): boolean {
+	switch (expr.kind) {
+		case 'literal':
+		case 'loopItem':
+		case 'free':
+			return false;
+		case 'variable':
+			return expr.variableId === stateId;
+		case 'unary':
+			return expressionReferencesVariable(expr.operand, stateId);
+		case 'binary':
+			return (
+				expressionReferencesVariable(expr.left, stateId) ||
+				expressionReferencesVariable(expr.right, stateId)
+			);
+	}
+}
+
+/**
+ * Returns undefined when a gate expression references a deleted state or uses
+ * an operator incompatible with the (still-present) state's type; otherwise
+ * returns the expression unchanged. A free expression is never stripped.
+ */
+function stripCondition(
+	condition: VisualExpression | undefined,
+	statesById: Map<string, VisualStoryState>
+): VisualExpression | undefined {
+	if (!condition) {
+		return undefined;
+	}
+
+	const variableIds: string[] = [];
+
+	// Reuse the analysis's read walk semantics through the manager's own
+	// walker so free expressions degrade to "not referencing" (kept). A
+	// structured-only walk returns true.
+	const structured = collectStructuredVariableIds(condition, variableIds);
+
+	if (structured) {
+		// Expression built only from structured nodes: drop it if any
+		// referenced state is gone or type-incompatible.
+		for (const id of variableIds) {
+			const state = statesById.get(id);
+
+			if (!state) {
+				return undefined;
+			}
+
+			if (!isExpressionCompatible(condition, state)) {
+				return undefined;
+			}
+		}
+
+		return condition;
+	}
+
+	// A free or otherwise opaque expression is kept (never stripped).
+	return condition;
+}
+
+/** Collects the state ids referenced by structured nodes in `expr`. */
+function collectStructuredVariableIds(
+	expr: VisualExpression,
+	output: string[]
+): boolean {
+	switch (expr.kind) {
+		case 'literal':
+		case 'loopItem':
+			return true;
+		case 'variable':
+			output.push(expr.variableId);
+			return true;
+		case 'unary':
+			return collectStructuredVariableIds(expr.operand, output);
+		case 'binary':
+			return (
+				collectStructuredVariableIds(expr.left, output) &&
+				collectStructuredVariableIds(expr.right, output)
+			);
+		case 'free':
+		default:
+			return false;
+	}
+}
+
+/**
  * Removes references to story states that no longer exist from a block list,
  * recursing through branches. References whose operator/operation is
  * incompatible with the state's current type are removed as well.
@@ -204,14 +316,7 @@ function stripStateReferences(
 		if (block.kind === 'text') {
 			return {
 				...block,
-				condition:
-					block.condition &&
-					isConditionCompatible(
-						block.condition,
-						statesById.get(block.condition.stateId)
-					)
-						? block.condition
-						: undefined
+				condition: stripCondition(block.condition, statesById)
 			};
 		}
 
@@ -221,14 +326,17 @@ function stripStateReferences(
 				actions: block.actions.filter(action =>
 					isActionCompatible(action, statesById.get(action.stateId))
 				),
-				condition:
-					block.condition &&
-					isConditionCompatible(
-						block.condition,
-						statesById.get(block.condition.stateId)
-					)
-						? block.condition
-						: undefined
+				condition: stripCondition(block.condition, statesById)
+			};
+		}
+
+		if (block.kind === 'set') {
+			return {
+				...block,
+				variableId: statesById.has(block.variableId)
+					? block.variableId
+					: '',
+				condition: stripCondition(block.condition, statesById)
 			};
 		}
 
@@ -244,14 +352,7 @@ function stripStateReferences(
 						: statesById.has(block.stateId)
 							? block.stateId
 							: '',
-				condition:
-					block.condition &&
-					isConditionCompatible(
-						block.condition,
-						statesById.get(block.condition.stateId)
-					)
-						? block.condition
-						: undefined
+				condition: stripCondition(block.condition, statesById)
 			};
 		}
 
@@ -261,28 +362,14 @@ function stripStateReferences(
 		if (block.kind === 'raw') {
 			return {
 				...block,
-				condition:
-					block.condition &&
-					isConditionCompatible(
-						block.condition,
-						statesById.get(block.condition.stateId)
-					)
-						? block.condition
-						: undefined
+				condition: stripCondition(block.condition, statesById)
 			};
 		}
 
 		if (block.kind === 'include') {
 			return {
 				...block,
-				condition:
-					block.condition &&
-					isConditionCompatible(
-						block.condition,
-						statesById.get(block.condition.stateId)
-					)
-						? block.condition
-						: undefined
+				condition: stripCondition(block.condition, statesById)
 			};
 		}
 
@@ -291,14 +378,7 @@ function stripStateReferences(
 		if (block.kind === 'interaction') {
 			return {
 				...block,
-				condition:
-					block.condition &&
-					isConditionCompatible(
-						block.condition,
-						statesById.get(block.condition.stateId)
-					)
-						? block.condition
-						: undefined
+				condition: stripCondition(block.condition, statesById)
 			};
 		}
 
@@ -317,14 +397,7 @@ function stripStateReferences(
 					block.defaultBlocks,
 					statesById
 				),
-				condition:
-					block.condition &&
-					isConditionCompatible(
-						block.condition,
-						statesById.get(block.condition.stateId)
-					)
-						? block.condition
-						: undefined
+				condition: stripCondition(block.condition, statesById)
 			};
 		}
 
@@ -335,14 +408,7 @@ function stripStateReferences(
 				...block,
 				stateId: statesById.has(block.stateId) ? block.stateId : '',
 				blocks: stripStateReferences(block.blocks, statesById),
-				condition:
-					block.condition &&
-					isConditionCompatible(
-						block.condition,
-						statesById.get(block.condition.stateId)
-					)
-						? block.condition
-						: undefined
+				condition: stripCondition(block.condition, statesById)
 			};
 		}
 
@@ -350,14 +416,7 @@ function stripStateReferences(
 			...block,
 			branches: block.branches.map(branch => ({
 				...branch,
-				condition:
-					branch.condition &&
-					isConditionCompatible(
-						branch.condition,
-						statesById.get(branch.condition.stateId)
-					)
-						? branch.condition
-						: undefined,
+				condition: stripCondition(branch.condition, statesById),
 				blocks: stripStateReferences(branch.blocks, statesById)
 			}))
 		};
@@ -449,37 +508,53 @@ export const StoryStatesManager: React.FC<StoryStatesManagerProps> = props => {
 					variant="create"
 				/>
 			</div>
-			{states.map(state => (
-				<div className="state-row" key={state.id}>
-					<input
-						aria-label={t('dialogs.passageEdit.visual.stateName')}
-						onChange={event => updateStates(states.map(item => item.id === state.id ? {...item, name: event.target.value} : item))}
-						value={state.name}
-					/>
-					<select
-						aria-label={t('dialogs.passageEdit.visual.stateType')}
-						onChange={event => {
-							const type = event.target.value as VisualStoryState['type'];
-							updateStates(states.map(item => item.id === state.id ? {...item, type, defaultValue: defaultValueForState({...item, type})} : item));
-						}}
-						value={state.type}
-					>
-						<option value="boolean">{t('dialogs.passageEdit.visual.boolean')}</option>
-						<option value="number">{t('dialogs.passageEdit.visual.number')}</option>
-						<option value="text">{t('dialogs.passageEdit.visual.text')}</option>
-						<option value="list">{t('dialogs.passageEdit.visual.list')}</option>
-					</select>
-					{state.type === 'list' ? (
-						<ListValueInput
-							items={state.defaultValue as string[]}
-							onChange={defaultValue => updateStates(states.map(item => item.id === state.id ? {...item, defaultValue} : item))}
+			{states.map(state => {
+				const sanitized = sanitizeVariableName(state.name);
+				const conflicts = states.some(
+					other =>
+						other.id !== state.id &&
+						sanitizeVariableName(other.name) === sanitized
+				);
+
+				return (
+					<div className="state-row" key={state.id}>
+						<input
+							aria-label={t('dialogs.passageEdit.visual.stateName')}
+							onChange={event => updateStates(states.map(item => item.id === state.id ? {...item, name: event.target.value} : item))}
+							value={state.name}
 						/>
-					) : (
-						<StateValueInput label={t('dialogs.passageEdit.visual.defaultValue')} state={state} value={state.defaultValue as boolean | number | string} onChange={defaultValue => updateStates(states.map(item => item.id === state.id ? {...item, defaultValue} : item))} />
-					)}
-					<button onClick={() => updateStates(states.filter(item => item.id !== state.id))} type="button">×</button>
-				</div>
-			))}
+						{conflicts && sanitized !== '' && (
+							<p className="state-name-warning">
+								{t('dialogs.passageEdit.visual.nameConflictWarning', {
+									name: sanitized
+								})}
+							</p>
+						)}
+						<select
+							aria-label={t('dialogs.passageEdit.visual.stateType')}
+							onChange={event => {
+								const type = event.target.value as VisualStoryState['type'];
+								updateStates(states.map(item => item.id === state.id ? {...item, type, defaultValue: defaultValueForState({...item, type})} : item));
+							}}
+							value={state.type}
+						>
+							<option value="boolean">{t('dialogs.passageEdit.visual.boolean')}</option>
+							<option value="number">{t('dialogs.passageEdit.visual.number')}</option>
+							<option value="text">{t('dialogs.passageEdit.visual.text')}</option>
+							<option value="list">{t('dialogs.passageEdit.visual.list')}</option>
+						</select>
+						{state.type === 'list' ? (
+							<ListValueInput
+								items={state.defaultValue as string[]}
+								onChange={defaultValue => updateStates(states.map(item => item.id === state.id ? {...item, defaultValue} : item))}
+							/>
+						) : (
+							<StateValueInput label={t('dialogs.passageEdit.visual.defaultValue')} state={state} value={state.defaultValue as boolean | number | string} onChange={defaultValue => updateStates(states.map(item => item.id === state.id ? {...item, defaultValue} : item))} />
+						)}
+						<button onClick={() => updateStates(states.filter(item => item.id !== state.id))} type="button">×</button>
+					</div>
+				);
+			})}
 		</section>
 	);
 };

@@ -1,5 +1,6 @@
 import {fakeAppInfo, fakeStory} from '../../test-util';
 import {
+	VisualBinaryOperator,
 	VisualBranchBlock,
 	VisualChoiceBlock,
 	VisualLoopBlock,
@@ -11,6 +12,19 @@ import {importStories} from '../import';
 import {publishStory} from '../publish';
 import {serializeVisualEditorMetadata} from '../visual-editor-metadata';
 import {compileVisualPassage} from '../visual-passage';
+
+function cond(
+	operator: VisualBinaryOperator,
+	variableId: string,
+	value: boolean | number | string
+) {
+	return {
+		kind: 'binary' as const,
+		operator,
+		left: {kind: 'variable' as const, variableId},
+		right: {kind: 'literal' as const, value}
+	};
+}
 
 describe('visual editor HTML metadata', () => {
 	function visualStory() {
@@ -28,7 +42,7 @@ describe('visual editor HTML metadata', () => {
 		story.passages[0].visual = {
 			blocks: [
 				{
-					condition: {operator: 'equals', stateId: state.id, value: false},
+					condition: cond('==', state.id, false),
 					id: 'text-1',
 					kind: 'text',
 					text: 'Hello.'
@@ -47,11 +61,7 @@ describe('visual editor HTML metadata', () => {
 									targetPassageId: story.passages[1].id
 								}
 							],
-							condition: {
-								operator: 'equals',
-								stateId: state.id,
-								value: true
-							},
+							condition: cond('==', state.id, true),
 							id: 'branch-a'
 						},
 						{blocks: [], id: 'branch-else'}
@@ -112,7 +122,7 @@ describe('visual editor HTML metadata', () => {
 		story.passages[0].visual = {
 			blocks: [
 				{
-					condition: {operator: 'equals', stateId: state.id, value: true},
+					condition: cond('==', state.id, true),
 					id: 'var-1',
 					kind: 'variable',
 					stateId: state.id
@@ -127,11 +137,7 @@ describe('visual editor HTML metadata', () => {
 									targetPassageId: story.passages[1].id
 								}
 							],
-							condition: {
-								operator: 'equals',
-								stateId: state.id,
-								value: true
-							},
+							condition: cond('==', state.id, true),
 							id: 'branch-a'
 						},
 						{blocks: [], id: 'branch-else'}
@@ -160,7 +166,7 @@ describe('visual editor HTML metadata', () => {
 
 		// Variable blocks keep their state id directly; states are not remapped.
 		expect(restoredVisual.blocks[0]).toEqual({
-			condition: {operator: 'equals', stateId: state.id, value: true},
+			condition: cond('==', state.id, true),
 			id: 'var-1',
 			kind: 'variable',
 			stateId: state.id
@@ -210,11 +216,7 @@ describe('visual editor HTML metadata', () => {
 					operation: 'reveal'
 				},
 				{
-					condition: {
-						operator: 'equals',
-						stateId: state.id,
-						value: true
-					},
+					condition: cond('==', state.id, true),
 					content: 'Peek.',
 					id: 'int-2',
 					kind: 'interaction',
@@ -223,7 +225,7 @@ describe('visual editor HTML metadata', () => {
 				},
 				{
 					actions: [{operation: 'set', stateId: state.id, value: true}],
-					condition: {operator: 'equals', stateId: state.id, value: true},
+					condition: cond('==', state.id, true),
 					id: 'choice-1',
 					kind: 'choice',
 					label: 'Go back',
@@ -254,7 +256,7 @@ describe('visual editor HTML metadata', () => {
 			operation: 'reveal'
 		});
 		expect(restoredVisual.blocks[1]).toEqual({
-			condition: {operator: 'equals', stateId: state.id, value: true},
+			condition: cond('==', state.id, true),
 			content: 'Peek.',
 			id: 'int-2',
 			kind: 'interaction',
@@ -266,7 +268,7 @@ describe('visual editor HTML metadata', () => {
 		// passage target remaps by name to the imported passage id.
 		expect(restoredVisual.blocks[2]).toEqual({
 			actions: [{operation: 'set', stateId: state.id, value: true}],
-			condition: {operator: 'equals', stateId: state.id, value: true},
+			condition: cond('==', state.id, true),
 			id: 'choice-1',
 			kind: 'choice',
 			label: 'Go back',
@@ -295,11 +297,7 @@ describe('visual editor HTML metadata', () => {
 		story.passages[0].visual = {
 			blocks: [
 				{
-					condition: {
-						operator: 'equals',
-						stateId: state.id,
-						value: true
-					},
+					condition: cond('==', state.id, true),
 					id: 'raw-1',
 					kind: 'raw',
 					sugar: '<<set $custom = $nrp_met_character>>'
@@ -327,7 +325,7 @@ describe('visual editor HTML metadata', () => {
 		// Raw blocks hold no passage references: they survive the round trip
 		// verbatim, including their condition and unescaped sugar.
 		expect(restoredVisual.blocks[0]).toEqual({
-			condition: {operator: 'equals', stateId: state.id, value: true},
+			condition: cond('==', state.id, true),
 			id: 'raw-1',
 			kind: 'raw',
 			sugar: '<<set $custom = $nrp_met_character>>'
@@ -372,11 +370,7 @@ describe('visual editor HTML metadata', () => {
 						{
 							blocks: [
 								{
-									condition: {
-										operator: 'equals',
-										stateId: state.id,
-										value: 1
-									},
+									condition: cond('==', state.id, 1),
 									id: 'var-1',
 									kind: 'variable',
 									stateId: state.id
@@ -434,7 +428,7 @@ describe('visual editor HTML metadata', () => {
 			{
 				blocks: [
 					{
-						condition: {operator: 'equals', stateId: state.id, value: 1},
+						condition: cond('==', state.id, 1),
 						id: 'var-1',
 						kind: 'variable',
 						stateId: state.id
@@ -479,7 +473,7 @@ describe('visual editor HTML metadata', () => {
 		story.passages[1].name = 'Next';
 		const v1: VisualPassageContentV1 = {
 			body: 'Hello.',
-			bodyCondition: {operator: 'equals', stateId: state.id, value: false},
+			bodyCondition: cond('==', state.id, false),
 			choices: [
 				{
 					actions: [{operation: 'set', stateId: state.id, value: true}],
@@ -566,5 +560,59 @@ describe('visual editor HTML metadata', () => {
 		const [restored] = importStories(modified);
 
 		expect(restored.passages[0].visual).toBeUndefined();
+	});
+
+	it('round trips expression and set blocks verbatim', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: 0,
+			id: 'met-trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Next';
+		story.passages[0].visual = {
+			blocks: [
+				{
+					condition: cond('>=', state.id, 2),
+					id: 'text-1',
+					kind: 'text',
+					text: 'Above.'
+				},
+				{
+					condition: cond('>', state.id, 0),
+					id: 'set-1',
+					kind: 'set',
+					operation: '+=',
+					variableId: state.id,
+					value: {
+						kind: 'binary',
+						operator: '+',
+						left: {kind: 'free', code: '$Trust'},
+						right: {kind: 'literal', value: 1}
+					}
+				}
+			],
+			version: 2
+		};
+		story.passages[0].text = compileVisualPassage(
+			story.passages[0].visual,
+			story,
+			story.passages[0].id
+		);
+		const [restored] = importStories(
+			publishStory(story, fakeAppInfo(), {startOptional: true})
+		);
+		const restoredVisual = restored.passages[0]
+			.visual as VisualPassageContentV2;
+
+		expect(restoredVisual.blocks).toEqual(story.passages[0].visual?.blocks);
+		expect(restored.passages[0].text).toBe(story.passages[0].text);
+		expect(serializeVisualEditorMetadata(restored)).toEqual(
+			serializeVisualEditorMetadata(story)
+		);
 	});
 });

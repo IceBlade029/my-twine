@@ -1,0 +1,120 @@
+/* ---- P3: 运行检查 runtime drawer ---- */
+
+.run-drawer {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--grid-size) * 2);
+}
+
+.run-drawer-toolbar {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--grid-size);
+}
+
+.run-drawer button {
+	font: inherit;
+	min-height: var(--control-height);
+	padding: var(--control-inner-padding);
+}
+
+.run-drawer-tabs {
+	border-bottom: 1px solid var(--light-gray);
+	display: flex;
+	gap: var(--grid-size);
+}
+
+.run-drawer-tabs button {
+	background: transparent;
+	border: none;
+	border-bottom: 2px solid transparent;
+	color: var(--gray);
+	cursor: pointer;
+}
+
+.run-drawer-tabs button.is-active {
+	border-bottom-color: var(--accent);
+	color: var(--heading-color, inherit);
+	font-weight: bold;
+}
+
+.run-error {
+	color: var(--danger, #c0392b);
+	font-size: 0.9em;
+}
+
+.run-state {
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+}
+
+.run-state-row .simulator-state {
+	align-items: baseline;
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--grid-size) / 2);
+}
+
+.run-diff {
+	color: var(--gray);
+	font-size: 0.85em;
+}
+
+.run-diff-unchanged {
+	color: var(--gray);
+	opacity: 0.7;
+}
+
+.run-render-html,
+.run-sugar-source {
+	background: var(--dark-gray);
+	border-radius: var(--corner-round);
+	color: var(--off-white);
+	overflow: auto;
+	padding: calc(var(--grid-size) * 2);
+	white-space: pre-wrap;
+}
+
+.run-render-html > :first-child {
+	margin-top: 0;
+}
+
+.run-render-html > :last-child {
+	margin-bottom: 0;
+}
+
+.run-trace-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.run-trace-entry {
+	align-items: baseline;
+	border-bottom: 1px solid var(--light-gray);
+	display: flex;
+	gap: var(--grid-size);
+	padding: var(--grid-size) 0;
+}
+
+.run-trace-entry.run-trace-clickable {
+	cursor: pointer;
+}
+
+.run-trace-ev {
+	color: var(--gray);
+	font-size: 0.85em;
+	min-width: 4rem;
+}
+
+.run-trace-block {
+	font-weight: bold;
+}
+
+.run-trace-block code,
+.run-trace-unknown {
+	color: var(--gray);
+	font-size: 0.85em;
+}

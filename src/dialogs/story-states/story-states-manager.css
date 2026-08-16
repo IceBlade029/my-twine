@@ -29,6 +29,13 @@
 	width: 100%;
 }
 
+.state-row .state-name-warning {
+	color: var(--danger, #c0392b);
+	font-size: 0.85em;
+	grid-column: 1 / -1;
+	margin: 0;
+}
+
 .list-value-input {
 	display: flex;
 	flex-direction: column;

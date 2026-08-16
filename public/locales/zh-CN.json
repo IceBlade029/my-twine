@@ -51,7 +51,10 @@
 		"undo": "撤销",
 		"undoChange": "撤销 {{change}}",
 		"unmaximize": "还原大小",
-		"view": "查看"
+		"view": "查看",
+		"collapse": "收起",
+		"expand": "展开",
+		"tags": "标签"
 	},
 	"components": {
 		"addTagButton": {
@@ -139,6 +142,13 @@
 		},
 		"tagEditor": {
 			"alreadyExists": "已存在同名标签。"
+		},
+		"tagCardButton": {
+			"addLabel": "添加标签",
+			"alreadyAdded": "该标签已添加。",
+			"invalidName": "请输入有效名称。",
+			"tagNameLabel": "标签名称",
+			"tagsWithCount_plural": "{{count}} 个标签"
 		}
 	},
 	"dialogs": {
@@ -176,7 +186,13 @@
 			"themeDark": "暗色",
 			"themeSystem": "跟随系统",
 			"theme": "主题",
-			"title": "偏好设置"
+			"title": "偏好设置",
+			"passageTagDisplay": "段落标签显示",
+			"passageTagDisplays": {
+				"color": "颜色",
+				"name": "名称"
+			},
+			"useEnhancedEditors": "使用增强编辑器"
 		},
 		"passageEdit": {
 			"editorCrashed": "编辑器遇到了一些错误。尝试关闭它并重新编辑这个片段。",
@@ -204,7 +220,7 @@
 				"addListItem": "添加项",
 				"addLoopBlock": "添加循环块",
 				"addRawBlock": "添加原始块",
-				"addState": "添加故事状态",
+				"addState": "添加故事变量",
 				"addSwitchBlock": "添加多路分支块",
 				"addVariableBlock": "添加变量块",
 				"blockIncomplete": "此块尚未完成。",
@@ -215,7 +231,7 @@
 				"blockKindLoop": "循环",
 				"blockKindRaw": "原始",
 				"blockKindSwitch": "多路分支",
-				"blockKindText": "文字",
+				"blockKindText": "文本",
 				"blockKindVariable": "变量",
 				"boolean": "是／否",
 				"body": "内容",
@@ -249,7 +265,7 @@
 				"loopListHint": "请先创建一个列表状态。",
 				"loopState": "遍历列表",
 				"noChoices": "还没有添加选择。",
-				"newState": "新状态",
+				"newState": "新变量",
 				"noStatesHint": "请先在「故事状态」对话框中创建故事状态。",
 				"number": "数值",
 				"operationAppend": "追加",
@@ -277,7 +293,7 @@
 				"simulatorValue": "「{{name}}」的模拟值",
 				"sourceLoopItem": "循环项",
 				"sourceState": "状态值",
-				"states": "故事状态",
+				"states": "故事变量",
 				"stateName": "状态名称",
 				"stateType": "状态类型",
 				"storyInitPreview": "自动生成的状态初始化（游戏开始时运行一次）",
@@ -293,7 +309,58 @@
 				"valueNo": "否",
 				"valueYes": "是",
 				"variableSource": "显示内容",
-				"variableState": "要显示的状态"
+				"variableState": "要显示的状态",
+				"runtimeDrawer": "运行检查",
+				"runButton": "运行",
+				"running": "运行中…",
+				"runTabState": "状态",
+				"runTabRender": "渲染结果",
+				"runTabTrace": "执行记录",
+				"runTabSugar": "SugarCube",
+				"unchanged": "未改变",
+				"traceBlockStart": "块开始",
+				"traceBlockEnd": "块结束",
+				"traceCondition": "条件",
+				"runtimeError": "运行错误",
+				"runHint": "点按 运行 用当前的快照值在真实的 SugarCube 运行时中执行该passage。",
+				"runFrameTitle": "运行时iframe",
+				"selectBlockHint": "点按一个执行记录条目以在编辑器中高亮对应模块。",
+				"traceUnknownBlock": "未知模块",
+				"addModule": "在此添加模块",
+				"advancedSyntaxNote": "该表达式包含高级语法，只能在表达式模式编辑。",
+				"blockCode": "代码",
+				"blockKindSet": "修改变量",
+				"builderMode": "构建器",
+				"currentTestValue": "当前测试值",
+				"executionCondition": "执行条件",
+				"expressionMode": "表达式",
+				"expressionSymbol": "表达式",
+				"formatNotLoaded": "故事格式尚未加载，无法运行测试。",
+				"loopItemValueHint": "显示当前循环项（仅在遍历列表内使用）。",
+				"nameConflictWarning": "变量名冲突：生成代码会使用 ${{name}}",
+				"readsVariables": "读取变量",
+				"setOperation": "操作",
+				"setValue": "值",
+				"setVariable": "目标变量",
+				"testResult": "测试结果",
+				"unableToDetermine": "无法确定",
+				"undefinedVariable": "未定义的变量",
+				"valueFreeExpression": "自由表达式",
+				"valueSource": "值来源",
+				"valueSourceConstant": "常量",
+				"valueSourceFreeExpression": "自由表达式",
+				"valueSourceLoopItem": "循环项",
+				"valueSourceVariable": "变量",
+				"moduleBranchDescription": "根据条件表达式选择执行其中一个分支。",
+				"moduleIncludeDescription": "在当前位置渲染另一个段落的内容。",
+				"moduleLoopDescription": "对列表中的每一项重复执行内部模块。",
+				"moduleRawDescription": "直接插入一段 SugarCube 源码（高级）。",
+				"moduleSetDescription": "修改一个变量的值。",
+				"moduleSwitchDescription": "根据一个值匹配多个分支。",
+				"moduleTextDescription": "输出一段正文。",
+				"moduleChoiceDescription": "向玩家展示一个选项，点击后跳转或修改变量。",
+				"moduleInteractionDescription": "点击后就地显示、追加或移除一段内容。",
+				"moduleVariableDescription": "把变量或循环项的当前值显示在正文中。"
 			}
 		},
 		"passageTags": {
@@ -313,7 +380,8 @@
 				"current": "当前故事格式",
 				"user": "用户添加的故事格式"
 			},
-			"noneVisible": "没有符合您筛选标准的故事格式。"
+			"noneVisible": "没有符合您筛选标准的故事格式。",
+			"title": "故事格式"
 		},
 		"storyImport": {
 			"deselectAll": "全不选",
@@ -356,10 +424,15 @@
 			"noMatches": "没有匹配片段",
 			"replaceAll": "替换所有片段中的项",
 			"replaceWith": "替换为",
-			"useRegexes": "使用正则表达式"
+			"useRegexes": "使用正则表达式",
+			"error": {
+				"emptyName": "请输入一个名称。",
+				"invalidRegex": "无效的正则表达式。",
+				"nameConflict": "该名称已存在。"
+			}
 		},
 		"storyStates": {
-			"title": "故事状态"
+			"title": "故事变量"
 		},
 		"storyStylesheet": {
 			"editorLabel": "故事样式表",
@@ -383,7 +456,13 @@
 			},
 			"storyDelete": "删除故事时发生错误。",
 			"storyRename": "重命名故事时发生错误。",
-			"storySave": "保存故事时发生错误。"
+			"storySave": "保存故事时发生错误。",
+			"storyLibraryFolderAppPref": {
+				"detail": "无法访问故事库文件夹。",
+				"message": "设置的故事库文件夹无法访问。",
+				"quit": "退出",
+				"useDefault": "使用默认文件夹"
+			}
 		},
 		"menuBar": {
 			"checkForUpdates": "检查更新……",
@@ -393,7 +472,9 @@
 			"speech": "台词",
 			"troubleshooting": "问题分析",
 			"twineHelp": "Twine 帮助",
-			"view": "查看"
+			"view": "查看",
+			"disableHardwareAcceleration": "禁用硬件加速",
+			"setStoryLibraryFolder": "设置故事库文件夹…"
 		},
 		"storiesDirectoryName": "故事",
 		"updateCheck": {
@@ -401,7 +482,15 @@
 			"error": "在检查Twine更新版本时遇到了错误。",
 			"updateAvailable": "较新版本的Twine现已可用。",
 			"upToDate": "已经是Twine可用的最新版本。"
-		}		
+		},
+		"relaunchDialog": {
+			"defaultPrompt": "Twine 需要重新启动。",
+			"relaunchNow": "立即重启"
+		},
+		"scratchDirectoryName": "Twine 临时目录",
+		"userCss": {
+			"filename": "用户样式"
+		}
 	},
 	"routes": {
 		"storyEdit": {
@@ -426,12 +515,13 @@
 				"selectAllPassages": "选择所有片段"
 			},
 			"storyStatesButton": {
-				"label": "故事状态"
+				"label": "故事变量"
 			},
 			"zoomButtons": {
 				"storyStructure": "仅显示故事结构",
 				"passageNames": "仅显示片段名称",
-				"passageNamesAndExcerpts": "显示片段名称与摘要"
+				"passageNamesAndExcerpts": "显示片段名称与摘要",
+				"legend": "缩放"
 			}
 		},
 		"storyList": {

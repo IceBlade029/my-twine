@@ -51,5 +51,5 @@ export function closestAppLocale(code: string) {
 		}
 	}
 
-	return 'en-us';
+	return 'zh-cn';
 }

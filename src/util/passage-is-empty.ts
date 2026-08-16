@@ -17,6 +17,11 @@ function blocksHaveContent(blocks: VisualBlock[]): boolean {
 			return block.source === 'loopItem' || block.stateId !== '';
 		}
 
+		if (block.kind === 'set') {
+			// A set block counts as content once it names a target state.
+			return block.variableId !== '';
+		}
+
 		if (block.kind === 'raw') {
 			return block.sugar.trim() !== '';
 		}

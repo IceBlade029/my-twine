@@ -3,15 +3,35 @@ import {
 	Passage,
 	Story,
 	VisualBlock,
-	VisualCondition,
+	VisualExpression,
 	VisualPassageContent,
 	VisualPassageContentV2,
 	VisualStateAction,
 	VisualStoryState
 } from '../store/stories';
 
-export function visualStateVariable(stateId: string) {
-	return `$nrp_${stateId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+/**
+ * Derives a SugarCube-safe variable name from an author-chosen state name.
+ * Every character not matching [a-zA-Z0-9_] becomes an underscore, an empty
+ * result becomes "variable", and a leading digit is prefixed with an
+ * underscore.
+ */
+export function sanitizeVariableName(name: string): string {
+	let result = name.replace(/[^a-zA-Z0-9_]/g, '_');
+
+	if (result === '') {
+		result = 'variable';
+	}
+
+	if (/^[0-9]/.test(result)) {
+		result = '_' + result;
+	}
+
+	return result;
+}
+
+export function visualStateVariable(state: VisualStoryState) {
+	return `$${sanitizeVariableName(state.name)}`;
 }
 
 /**
@@ -38,36 +58,59 @@ export function compileStateInitialization(states: VisualStoryState[]): string {
 	return states
 		.map(
 			state =>
-				`<<if ndef ${visualStateVariable(state.id)}>><<set ${visualStateVariable(
-					state.id
+				`<<if ndef ${visualStateVariable(state)}>><<set ${visualStateVariable(
+					state
 				)} = ${sugarCubeValue(state.defaultValue)}>><</if>>`
 		)
 		.join('\n');
 }
 
-function compileCondition(condition: VisualCondition, states: VisualStoryState[]) {
-	const state = states.find(item => item.id === condition.stateId);
+/**
+ * Compiles a visual expression to SugarCube source. Returns undefined when a
+ * referenced state is missing or a needed sub-expression is not compilable,
+ * so callers can skip a whole piece (mirroring the old missing-state
+ * behavior). A `free` expression is emitted verbatim.
+ */
+export function compileExpression(
+	expr: VisualExpression,
+	states: VisualStoryState[]
+): string | undefined {
+	switch (expr.kind) {
+		case 'literal':
+			return JSON.stringify(expr.value);
+		case 'loopItem':
+			return '_item';
+		case 'free':
+			return expr.code;
+		case 'variable': {
+			const state = states.find(item => item.id === expr.variableId);
 
-	if (!state) {
-		return undefined;
+			return state ? visualStateVariable(state) : undefined;
+		}
+		case 'unary': {
+			const operand = compileExpression(expr.operand, states);
+
+			return operand === undefined ? undefined : `(!${operand})`;
+		}
+		case 'binary': {
+			const left = compileExpression(expr.left, states);
+			const right = compileExpression(expr.right, states);
+
+			if (left === undefined || right === undefined) {
+				return undefined;
+			}
+
+			if (expr.operator === 'includes') {
+				return `(${left}).includes(${right})`;
+			}
+
+			if (expr.operator === 'notIncludes') {
+				return `!(${left}).includes(${right})`;
+			}
+
+			return `(${left} ${expr.operator} ${right})`;
+		}
 	}
-
-	if (condition.operator === 'includes') {
-		return `${visualStateVariable(state.id)}.includes(${sugarCubeValue(condition.value)})`;
-	}
-
-	if (condition.operator === 'notIncludes') {
-		return `!${visualStateVariable(state.id)}.includes(${sugarCubeValue(condition.value)})`;
-	}
-
-	const operators = {
-		equals: 'is',
-		notEquals: 'isnot',
-		greaterThan: 'gt',
-		lessThan: 'lt'
-	};
-
-	return `${visualStateVariable(state.id)} ${operators[condition.operator]} ${sugarCubeValue(condition.value)}`;
 }
 
 function compileAction(action: VisualStateAction, states: VisualStoryState[]) {
@@ -77,7 +120,7 @@ function compileAction(action: VisualStateAction, states: VisualStoryState[]) {
 		return undefined;
 	}
 
-	const variable = visualStateVariable(state.id);
+	const variable = visualStateVariable(state);
 
 	if (action.operation === 'increase') {
 		return `${variable} += ${Number(action.value) || 0}`;
@@ -100,6 +143,35 @@ function compileAction(action: VisualStateAction, states: VisualStoryState[]) {
 	}
 
 	return `${variable} = ${sugarCubeValue(action.value)}`;
+}
+
+/**
+ * Compiles a single block in isolation, so the per-block code preview in the
+ * editor shows exactly what that block would generate. It reuses the full
+ * compiler with just that block so nested blocks (branches, loops, switches)
+ * compile identically to the whole-passage result.
+ */
+export function compileBlockFragment(
+	block: VisualBlock,
+	states: VisualStoryState[],
+	story: Story,
+	passageId?: string
+): string {
+	return compileBlocks([block], states, story, passageId).join('\n');
+}
+
+/**
+ * Converts a structured VisualExpression into the same SugarCube source string
+ * the compiler would emit (short-circuited back to SugarCube source). Used by
+ * the condition editor's builder->expression switch so the free-code field
+ * starts from the exact generated expression. Returns undefined when the
+ * expression is not compilable (e.g. references a missing state).
+ */
+export function serializeExpressionToCode(
+	expr: VisualExpression,
+	states: VisualStoryState[]
+): string | undefined {
+	return compileExpression(expr, states);
 }
 
 /**
@@ -145,9 +217,34 @@ function compileBlocks(
 	blocks: VisualBlock[],
 	states: VisualStoryState[],
 	story: Story,
-	passageId?: string
+	passageId?: string,
+	trace = false
 ): string[] {
 	return blocks.reduce<string[]>((output, block) => {
+		// Trace markers surround every block fragment so the runtime drawer can
+		// highlight which blocks actually executed. Ignored unless trace runs.
+		const mark = (piece: string) =>
+			trace
+				? `<<script>>window.__trace.push({b:${JSON.stringify(
+						block.id
+					)},ev:"s"})<</script>>${piece}<<script>>window.__trace.push({b:${JSON.stringify(
+						block.id
+					)},ev:"e"})<</script>>`
+				: piece;
+		// Wraps a condition (if present) so its result is recorded; mirror of
+		// the non-trace `<<if ${condition}>>` wrapper.
+		const withTraceCondition = (piece: string, condition?: string) => {
+			if (!trace) {
+				return condition ? `<<if ${condition}>>${piece}<</if>>` : piece;
+			}
+
+			return condition
+				? `<<if (window.__trace.push({c:${JSON.stringify(
+						block.id
+					)},r:${condition}}), ${condition})>>${piece}<</if>>`
+				: piece;
+		};
+
 		if (block.kind === 'text') {
 			const text = block.text.trim();
 
@@ -156,10 +253,10 @@ function compileBlocks(
 			}
 
 			const condition = block.condition
-				? compileCondition(block.condition, states)
+				? compileExpression(block.condition, states)
 				: undefined;
 
-			output.push(condition ? `<<if ${condition}>>${text}<</if>>` : text);
+			output.push(mark(withTraceCondition(text, condition)));
 			return output;
 		}
 
@@ -176,10 +273,10 @@ function compileBlocks(
 			if (block.specialTarget === 'back' || block.specialTarget === 'return') {
 				const link = `<<${block.specialTarget} ${JSON.stringify(label)}>>`;
 				const condition = block.condition
-					? compileCondition(block.condition, states)
+					? compileExpression(block.condition, states)
 					: undefined;
 
-				output.push(condition ? `<<if ${condition}>>${link}<</if>>` : link);
+				output.push(mark(withTraceCondition(link, condition)));
 				return output;
 			}
 
@@ -197,10 +294,10 @@ function compileBlocks(
 			const setter = actions.length > 0 ? `[${actions.join('; ')}]` : '';
 			const link = `[[${label}->${target.name}]${setter}]`;
 			const condition = block.condition
-				? compileCondition(block.condition, states)
+				? compileExpression(block.condition, states)
 				: undefined;
 
-			output.push(condition ? `<<if ${condition}>>${link}<</if>>` : link);
+			output.push(mark(withTraceCondition(link, condition)));
 			return output;
 		}
 
@@ -228,10 +325,10 @@ function compileBlocks(
 			}
 
 			const condition = block.condition
-				? compileCondition(block.condition, states)
+				? compileExpression(block.condition, states)
 				: undefined;
 
-			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+			output.push(mark(withTraceCondition(code, condition)));
 			return output;
 		}
 
@@ -243,12 +340,10 @@ function compileBlocks(
 			}
 
 			const condition = block.condition
-				? compileCondition(block.condition, states)
+				? compileExpression(block.condition, states)
 				: undefined;
 
-			output.push(
-				condition ? `<<if ${condition}>>${block.sugar}<</if>>` : block.sugar
-			);
+			output.push(mark(withTraceCondition(block.sugar, condition)));
 			return output;
 		}
 
@@ -256,10 +351,10 @@ function compileBlocks(
 			if (block.source === 'loopItem') {
 				const code = '<<print _item>>';
 				const condition = block.condition
-					? compileCondition(block.condition, states)
+					? compileExpression(block.condition, states)
 					: undefined;
 
-				output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+				output.push(mark(withTraceCondition(code, condition)));
 				return output;
 			}
 
@@ -269,12 +364,44 @@ function compileBlocks(
 				return output;
 			}
 
-			const code = `<<print ${visualStateVariable(state.id)}>>`;
+			const code = `<<print ${visualStateVariable(state)}>>`;
 			const condition = block.condition
-				? compileCondition(block.condition, states)
+				? compileExpression(block.condition, states)
 				: undefined;
 
-			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+			output.push(mark(withTraceCondition(code, condition)));
+			return output;
+		}
+
+		if (block.kind === 'set') {
+			const state = states.find(item => item.id === block.variableId);
+
+			// The set block needs a resolvable target state and a compilable
+			// value expression, otherwise there is nothing to emit.
+			if (!state) {
+				return output;
+			}
+
+			const value = compileExpression(block.value, states);
+
+			if (value === undefined) {
+				return output;
+			}
+
+			const code = `<<set ${visualStateVariable(
+				state
+			)} ${block.operation} ${value}>>`;
+
+			output.push(
+				mark(
+					withTraceCondition(
+						code,
+						block.condition
+							? compileExpression(block.condition, states)
+							: undefined
+					)
+				)
+			);
 			return output;
 		}
 
@@ -289,10 +416,10 @@ function compileBlocks(
 
 			const code = `<<include ${JSON.stringify(target.name)}>>`;
 			const condition = block.condition
-				? compileCondition(block.condition, states)
+				? compileExpression(block.condition, states)
 				: undefined;
 
-			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+			output.push(mark(withTraceCondition(code, condition)));
 			return output;
 		}
 
@@ -314,7 +441,8 @@ function compileBlocks(
 							caseItem.blocks,
 							states,
 							story,
-							passageId
+							passageId,
+							trace
 						).join('\n')}<</case>>`
 				)
 				.join('');
@@ -324,17 +452,18 @@ function compileBlocks(
 							block.defaultBlocks,
 							states,
 							story,
-							passageId
+							passageId,
+							trace
 						).join('\n')}<</default>>`
 					: '';
 			const code = `<<switch ${visualStateVariable(
-				state.id
+				state
 			)}>>${cases}${defaultCode}<</switch>>`;
 			const condition = block.condition
-				? compileCondition(block.condition, states)
+				? compileExpression(block.condition, states)
 				: undefined;
 
-			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+			output.push(mark(withTraceCondition(code, condition)));
 			return output;
 		}
 
@@ -347,30 +476,42 @@ function compileBlocks(
 			}
 
 			const code = `<<for _item range ${visualStateVariable(
-				state.id
-			)}>>${compileBlocks(block.blocks, states, story, passageId).join(
-				'\n'
-			)}<</for>>`;
+				state
+			)}>>${compileBlocks(
+				block.blocks,
+				states,
+				story,
+				passageId,
+				trace
+			).join('\n')}<</for>>`;
 			const condition = block.condition
-				? compileCondition(block.condition, states)
+				? compileExpression(block.condition, states)
 				: undefined;
 
-			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+			output.push(mark(withTraceCondition(code, condition)));
 			return output;
 		}
 
 		// A branch block compiles into a single <<if>> chain. The else branch
 		// (condition undefined) must be last; blocks within each branch are
 		// compiled recursively with the same passage id.
+		const record = (cond: string | boolean | undefined) =>
+			trace
+				? `(window.__trace.push({c:${JSON.stringify(
+						block.id
+					)},r:${cond ?? 'true'}}), ${cond ?? 'true'})`
+				: undefined;
+
 		const pieces = block.branches.map((branch, index) => {
 			const compiled = compileBlocks(
 				branch.blocks,
 				states,
 				story,
-				passageId
+				passageId,
+				trace
 			).join('\n');
 			const condition = branch.condition
-				? compileCondition(branch.condition, states)
+				? compileExpression(branch.condition, states)
 				: undefined;
 
 			// Defensive: a leading conditionless branch is invalid per the data
@@ -380,16 +521,25 @@ function compileBlocks(
 			const keyword =
 				index === 0
 					? condition
-						? `<<if ${condition}>>`
-						: '<<if 1>>'
+						? trace
+							? `<<if ${record(condition)}>>`
+							: `<<if ${condition}>>`
+						: trace
+							? `<<if ${record(true)}>>`
+							: '<<if 1>>'
 					: condition
-						? `<<elseif ${condition}>>`
+						? trace
+							? `<<elseif ${record(condition)}>>`
+							: `<<elseif ${condition}>>`
 						: '<<else>>';
 
 			return `${keyword}${compiled}`;
 		});
 
-		output.push(`${pieces.join('')}<</if>>`);
+		// Branch blocks have no block-level condition (only per-branch ones,
+		// recorded above); the whole `<<if>>` chain is wrapped in start/end
+		// markers when tracing.
+		output.push(mark(`${pieces.join('')}<</if>>`));
 		return output;
 	}, []);
 }
@@ -411,7 +561,8 @@ function compileBlocks(
 export function compileVisualPassage(
 	content: VisualPassageContent,
 	story: Story,
-	passageId?: string
+	passageId?: string,
+	options?: {trace?: boolean}
 ) {
 	const contentV2 = migrateVisualContent(content);
 	const states = story.visual?.states ?? [];
@@ -431,7 +582,15 @@ export function compileVisualPassage(
 		result.push(initialization);
 	}
 
-	result.push(...compileBlocks(contentV2.blocks, states, story, passageId));
+	result.push(
+		...compileBlocks(
+			contentV2.blocks,
+			states,
+			story,
+			passageId,
+			options?.trace === true
+		)
+	);
 
 	return result.join('\n\n').trim();
 }

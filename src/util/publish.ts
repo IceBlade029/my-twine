@@ -133,9 +133,10 @@ export function publishStory(
 		`type="text/twine-javascript">` +
 		story.script +
 		`</script>` +
-		`<script type="application/json" data-narrative-editor>` +
+		`<tw-narrative-editor-metadata type="application/json" ` +
+		`data-narrative-editor>` +
 		editorMetadata +
-		`</script>` +
+		`</tw-narrative-editor-metadata>` +
 		tagData +
 		passageData +
 		`</tw-storydata>`

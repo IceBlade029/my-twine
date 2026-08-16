@@ -1,18 +1,34 @@
 import {fakePassage, fakeStory} from '../../test-util';
 import {
+	VisualBinaryOperator,
 	VisualBlock,
 	VisualPassageContentV1,
 	VisualPassageContentV2
 } from '../../store/stories';
 import {
+	compileExpression,
 	compileStateInitialization,
 	compileVisualPassage,
 	emptyVisualPassage,
 	migrateVisualContent,
-	passageUsesVisualEditor
+	passageUsesVisualEditor,
+	sanitizeVariableName
 } from '../visual-passage';
 
 describe('visual passage utilities', () => {
+	function bin(
+		variableId: string,
+		operator: VisualBinaryOperator,
+		value: boolean | number | string
+	) {
+		return {
+			kind: 'binary' as const,
+			operator,
+			left: {kind: 'variable' as const, variableId},
+			right: {kind: 'literal' as const, value}
+		};
+	}
+
 	it('creates empty visual passage content', () => {
 		expect(emptyVisualPassage()).toEqual({blocks: [], version: 2});
 	});
@@ -91,6 +107,16 @@ describe('visual passage utilities', () => {
 		);
 	});
 
+	it('sanitizes author-chosen state names into SugarCube variables', () => {
+		expect(sanitizeVariableName('Trust')).toBe('Trust');
+		expect(sanitizeVariableName('Player 1')).toBe('Player_1');
+		expect(sanitizeVariableName('has-died?')).toBe('has_died_');
+		expect(sanitizeVariableName('')).toBe('variable');
+		expect(sanitizeVariableName('   ')).toBe('___');
+		expect(sanitizeVariableName('1up')).toBe('_1up');
+		expect(sanitizeVariableName('already_ok_2')).toBe('already_ok_2');
+	});
+
 	it('compiles state initialization, conditions, and actions', () => {
 		const story = fakeStory(2);
 		const state = {
@@ -105,14 +131,14 @@ describe('visual passage utilities', () => {
 		const content: VisualPassageContentV2 = {
 			blocks: [
 				{
-					condition: {operator: 'greaterThan', stateId: state.id, value: 2},
+					condition: bin(state.id, '>', 2),
 					id: 'text-1',
 					kind: 'text',
 					text: 'Trusted.'
 				},
 				{
 					actions: [{operation: 'increase', stateId: state.id, value: 1}],
-					condition: {operator: 'equals', stateId: state.id, value: 3},
+					condition: bin(state.id, '==', 3),
 					id: 'choice-1',
 					kind: 'choice',
 					label: 'Continue',
@@ -128,10 +154,10 @@ describe('visual passage utilities', () => {
 			story.passages[0].id
 		);
 
-		expect(startSource).toContain('<<if ndef $nrp_trust>>');
-		expect(startSource).toContain('<<if $nrp_trust gt 2>>Trusted.<</if>>');
+		expect(startSource).toContain('<<if ndef $Trust>>');
+		expect(startSource).toContain('<<if ($Trust > 2)>>Trusted.<</if>>');
 		expect(startSource).toContain(
-			'<<if $nrp_trust is 3>>[[Continue->Next][$nrp_trust += 1]]<</if>>'
+			'<<if ($Trust == 3)>>[[Continue->Next][$Trust += 1]]<</if>>'
 		);
 
 		const nextContent = emptyVisualPassage();
@@ -143,7 +169,85 @@ describe('visual passage utilities', () => {
 				story,
 				story.passages[1].id
 			)
-		).not.toContain('<<if ndef $nrp_trust>>');
+		).not.toContain('<<if ndef $Trust>>');
+	});
+
+	it('compiles expression nodes across all operators', () => {
+		const states = [
+			{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number' as const},
+			{defaultValue: [], id: 'inv', name: 'Inventory', type: 'list' as const}
+		];
+		const v = (id: string) => ({kind: 'variable' as const, variableId: id});
+		const lit = (value: boolean | number | string) => ({
+			kind: 'literal' as const,
+			value
+		});
+		const b =
+			(op: VisualBinaryOperator) =>
+			(left: any, right: any) => ({
+				kind: 'binary' as const,
+				operator: op,
+				left,
+				right
+			});
+
+		expect(compileExpression(lit(true), states)).toBe('true');
+		expect(compileExpression(lit(3), states)).toBe('3');
+		expect(compileExpression(lit('cd'), states)).toBe('"cd"');
+		expect(compileExpression({kind: 'loopItem'}, states)).toBe('_item');
+		expect(compileExpression({kind: 'free', code: '$x >= 1 && $y'}, states)).toBe(
+			'$x >= 1 && $y'
+		);
+		expect(compileExpression(v('trust'), states)).toBe('$Trust');
+		// A missing state variable makes the whole expression undefined.
+		expect(compileExpression(v('gone'), states)).toBeUndefined();
+
+		expect(compileExpression(b('==') (v('trust'), lit(5)), states)).toBe(
+			'($Trust == 5)'
+		);
+		expect(compileExpression(b('!=') (v('trust'), lit(5)), states)).toBe(
+			'($Trust != 5)'
+		);
+		expect(compileExpression(b('>') (v('trust'), lit(5)), states)).toBe(
+			'($Trust > 5)'
+		);
+		expect(compileExpression(b('>=') (v('trust'), lit(5)), states)).toBe(
+			'($Trust >= 5)'
+		);
+		expect(compileExpression(b('<') (v('trust'), lit(5)), states)).toBe(
+			'($Trust < 5)'
+		);
+		expect(compileExpression(b('<=') (v('trust'), lit(5)), states)).toBe(
+			'($Trust <= 5)'
+		);
+		expect(compileExpression(b('&&') (v('trust'), v('trust')), states)).toBe(
+			'($Trust && $Trust)'
+		);
+		expect(compileExpression(b('||') (v('trust'), v('trust')), states)).toBe(
+			'($Trust || $Trust)'
+		);
+		expect(compileExpression(b('+') (v('trust'), v('trust')), states)).toBe(
+			'($Trust + $Trust)'
+		);
+		expect(compileExpression(b('-') (v('trust'), v('trust')), states)).toBe(
+			'($Trust - $Trust)'
+		);
+		expect(compileExpression(b('includes') (v('inv'), lit('key')), states)).toBe(
+			'($Inventory).includes("key")'
+		);
+		expect(
+			compileExpression(b('notIncludes') (v('inv'), lit('key')), states)
+		).toBe('!($Inventory).includes("key")');
+
+		// A missing sub-expression poisons the whole binary expression.
+		expect(
+			compileExpression(b('==') (v('trust'), v('gone')), states)
+		).toBeUndefined();
+
+		// Unary negation.
+		expect(
+			compileExpression({kind: 'unary', operator: '!', operand: v('trust')}, states)
+		).toBe('(!$Trust)');
 	});
 
 	it('compiles variable and include blocks', () => {
@@ -175,7 +279,7 @@ describe('visual passage utilities', () => {
 				story,
 				story.passages[0].id
 			)
-		).toBe('<<print $nrp_trust>>\n\n<<include "Intro">>');
+		).toBe('<<print $Trust>>\n\n<<include "Intro">>');
 	});
 
 	it('skips variable and include blocks with missing references', () => {
@@ -253,11 +357,7 @@ describe('visual passage utilities', () => {
 				{
 					blocks: [
 						{
-							condition: {
-								operator: 'greaterThan',
-								stateId: state.id,
-								value: 5
-							},
+							condition: bin(state.id, '>', 5),
 							id: 'raw-1',
 							kind: 'raw',
 							sugar: '<<print $coins>>'
@@ -268,7 +368,7 @@ describe('visual passage utilities', () => {
 				story,
 				story.passages[0].id
 			)
-		).toBe('<<if $nrp_trust gt 5>><<print $coins>><</if>>');
+		).toBe('<<if ($Trust > 5)>><<print $coins>><</if>>');
 	});
 
 	it('compiles loop item variable blocks and keeps state blocks unchanged', () => {
@@ -302,7 +402,7 @@ describe('visual passage utilities', () => {
 				story,
 				story.passages[0].id
 			)
-		).toBe('<<print _item>>\n\n<<print $nrp_trust>>');
+		).toBe('<<print _item>>\n\n<<print $Trust>>');
 	});
 
 	it('wraps loop item variable blocks in their conditions', () => {
@@ -322,11 +422,7 @@ describe('visual passage utilities', () => {
 				{
 					blocks: [
 						{
-							condition: {
-								operator: 'greaterThan',
-								stateId: state.id,
-								value: 1
-							},
+							condition: bin(state.id, '>', 1),
 							id: 'var-1',
 							kind: 'variable',
 							source: 'loopItem',
@@ -338,7 +434,7 @@ describe('visual passage utilities', () => {
 				story,
 				story.passages[0].id
 			)
-		).toBe('<<if $nrp_trust gt 1>><<print _item>><</if>>');
+		).toBe('<<if ($Trust > 1)>><<print _item>><</if>>');
 	});
 
 	it('wraps variable and include blocks in their conditions', () => {
@@ -358,21 +454,13 @@ describe('visual passage utilities', () => {
 				{
 					blocks: [
 						{
-							condition: {
-								operator: 'greaterThan',
-								stateId: state.id,
-								value: 5
-							},
+							condition: bin(state.id, '>', 5),
 							id: 'var-1',
 							kind: 'variable',
 							stateId: state.id
 						},
 						{
-							condition: {
-								operator: 'equals',
-								stateId: state.id,
-								value: 1
-							},
+							condition: bin(state.id, '==', 1),
 							id: 'inc-1',
 							kind: 'include',
 							targetPassageId: story.passages[1].id
@@ -384,7 +472,7 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe(
-			'<<if $nrp_trust gt 5>><<print $nrp_trust>><</if>>\n\n<<if $nrp_trust is 1>><<include "Intro">><</if>>'
+			'<<if ($Trust > 5)>><<print $Trust>><</if>>\n\n<<if ($Trust == 1)>><<include "Intro">><</if>>'
 		);
 	});
 
@@ -414,7 +502,7 @@ describe('visual passage utilities', () => {
 					},
 					{
 						actions: [],
-						condition: {operator: 'equals', stateId: state.id, value: 1},
+						condition: bin(state.id, '==', 1),
 						id: 'choice-return',
 						kind: 'choice',
 						label: 'Return',
@@ -431,7 +519,7 @@ describe('visual passage utilities', () => {
 		// specialTarget ignores the target passage id and the actions: the
 		// back/return macros have no setter, and a condition wraps the link.
 		expect(source).toBe(
-			'<<back "Go back">>\n\n<<if $nrp_trust is 1>><<return "Return">><</if>>'
+			'<<back "Go back">>\n\n<<if ($Trust == 1)>><<return "Return">><</if>>'
 		);
 	});
 
@@ -531,11 +619,7 @@ describe('visual passage utilities', () => {
 				{
 					blocks: [
 						{
-							condition: {
-								operator: 'equals',
-								stateId: state.id,
-								value: true
-							},
+							condition: bin(state.id, '==', true),
 							content: 'Secret.',
 							id: 'int-1',
 							kind: 'interaction',
@@ -549,7 +633,7 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe(
-			'<<if $nrp_flag is true>><<link "Reveal">><<replace "#nrp_hook_int_1">>Secret.<</replace>><</link>><span id="#nrp_hook_int_1"></span><</if>>'
+			'<<if ($Flag == true)>><<link "Reveal">><<replace "#nrp_hook_int_1">>Secret.<</replace>><</link>><span id="#nrp_hook_int_1"></span><</if>>'
 		);
 	});
 
@@ -583,11 +667,7 @@ describe('visual passage utilities', () => {
 											targetPassageId: story.passages[1].id
 										}
 									],
-									condition: {
-										operator: 'equals',
-										stateId: state.id,
-										value: 1
-									},
+									condition: bin(state.id, '==', 1),
 									id: 'branch-a'
 								},
 								{
@@ -607,7 +687,7 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe(
-			'<<if $nrp_s is 1>>[[Go to A->Ending A]]<<else>>Fallback text.<</if>>'
+			'<<if ($S == 1)>>[[Go to A->Ending A]]<<else>>Fallback text.<</if>>'
 		);
 	});
 
@@ -625,17 +705,13 @@ describe('visual passage utilities', () => {
 		const content: VisualPassageContentV2 = {
 			blocks: [
 				{
-					condition: {operator: 'includes', stateId: state.id, value: 'key'},
+					condition: bin(state.id, 'includes', 'key'),
 					id: 'text-1',
 					kind: 'text',
 					text: 'You have a key.'
 				},
 				{
-					condition: {
-						operator: 'notIncludes',
-						stateId: state.id,
-						value: 'key'
-					},
+					condition: bin(state.id, 'notIncludes', 'key'),
 					id: 'text-2',
 					kind: 'text',
 					text: 'No key.'
@@ -659,17 +735,17 @@ describe('visual passage utilities', () => {
 
 		// The list default initializes as a SugarCube array literal.
 		expect(source).toContain(
-			'<<if ndef $nrp_inv>><<set $nrp_inv = ["a","b"]>><</if>>'
+			'<<if ndef $Inventory>><<set $Inventory = ["a","b"]>><</if>>'
 		);
 		expect(source).toContain(
-			'<<if $nrp_inv.includes("key")>>You have a key.<</if>>'
+			'<<if ($Inventory).includes("key")>>You have a key.<</if>>'
 		);
 		expect(source).toContain(
-			'<<if !$nrp_inv.includes("key")>>No key.<</if>>'
+			'<<if !($Inventory).includes("key")>>No key.<</if>>'
 		);
 		// List actions inside a choice setter, in order.
 		expect(source).toContain(
-			'[[Continue->Next][$nrp_inv.push("key"); $nrp_inv.delete("key"); $nrp_inv = []]]'
+			'[[Continue->Next][$Inventory.push("key"); $Inventory.delete("key"); $Inventory = []]]'
 		);
 	});
 
@@ -696,12 +772,12 @@ describe('visual passage utilities', () => {
 		// content object was just created.
 		expect(
 			compileVisualPassage(fresh, story, story.passages[0].id)
-		).toContain('<<if ndef $nrp_trust>>');
+		).toContain('<<if ndef $Trust>>');
 
 		// A non-owner passage id must not emit initialization.
 		expect(
 			compileVisualPassage(fresh, story, story.passages[1].id)
-		).not.toContain('<<if ndef $nrp_trust>>');
+		).not.toContain('<<if ndef $Trust>>');
 	});
 
 	it('compiles state initialization into a StoryInit passage when one exists', () => {
@@ -714,8 +790,6 @@ describe('visual passage utilities', () => {
 		};
 
 		story.visual = {states: [state], version: 1};
-		// The start passage (passages[0]) is visual, but a real StoryInit
-		// passage exists: it must win ownership of the init block.
 		story.passages[0].visual = emptyVisualPassage();
 		story.passages[1].visual = emptyVisualPassage();
 		story.passages[1].name = 'StoryInit';
@@ -723,12 +797,11 @@ describe('visual passage utilities', () => {
 
 		expect(
 			compileVisualPassage(emptyVisualPassage(), story, story.passages[1].id)
-		).toContain('<<if ndef $nrp_trust>>');
+		).toContain('<<if ndef $Trust>>');
 
-		// The start passage no longer owns initialization when StoryInit exists.
 		expect(
 			compileVisualPassage(emptyVisualPassage(), story, story.passages[0].id)
-		).not.toContain('<<if ndef $nrp_trust>>');
+		).not.toContain('<<if ndef $Trust>>');
 	});
 
 	it('falls back to the start passage when it is visual and no StoryInit exists', () => {
@@ -744,13 +817,12 @@ describe('visual passage utilities', () => {
 		story.passages[0].visual = emptyVisualPassage();
 		story.passages[1].visual = emptyVisualPassage();
 
-		// No StoryInit: the start passage (passages[0], visual) owns the init.
 		expect(
 			compileVisualPassage(emptyVisualPassage(), story, story.passages[0].id)
-		).toContain('<<if ndef $nrp_flag>>');
+		).toContain('<<if ndef $Flag>>');
 		expect(
 			compileVisualPassage(emptyVisualPassage(), story, story.passages[1].id)
-		).not.toContain('<<if ndef $nrp_flag>>');
+		).not.toContain('<<if ndef $Flag>>');
 	});
 
 	it('falls back to the first visual passage when no StoryInit exists and the start passage is not visual', () => {
@@ -763,42 +835,153 @@ describe('visual passage utilities', () => {
 		};
 
 		story.visual = {states: [state], version: 1};
-		// passages[0] is the start passage but has no visual content.
 		story.passages[0].visual = undefined;
 		story.passages[1].visual = emptyVisualPassage();
 		story.passages[2].visual = emptyVisualPassage();
 
-		// The first visual passage owns initialization.
 		expect(
 			compileVisualPassage(emptyVisualPassage(), story, story.passages[1].id)
-		).toContain('<<if ndef $nrp_trust>>');
+		).toContain('<<if ndef $Trust>>');
 		expect(
 			compileVisualPassage(emptyVisualPassage(), story, story.passages[2].id)
-		).not.toContain('<<if ndef $nrp_trust>>');
+		).not.toContain('<<if ndef $Trust>>');
 	});
 
 	it('compiles state initialization into a block and an empty string for no states', () => {
-		const state = {
-			defaultValue: ['key'],
-			id: 'inv',
-			name: 'Inventory',
-			type: 'list' as const
-		};
+		const states = [
+			{
+				defaultValue: ['key'],
+				id: 'inv',
+				name: 'Inventory',
+				type: 'list' as const
+			},
+			{
+				defaultValue: 0,
+				id: 'p1',
+				name: 'Player 1',
+				type: 'number' as const
+			}
+		];
 
-		expect(compileStateInitialization([state])).toBe(
-			'<<if ndef $nrp_inv>><<set $nrp_inv = ["key"]>><</if>>'
+		expect(compileStateInitialization(states)).toBe(
+			'<<if ndef $Inventory>><<set $Inventory = ["key"]>><</if>>\n<<if ndef $Player_1>><<set $Player_1 = 0>><</if>>'
 		);
 		expect(compileStateInitialization([])).toBe('');
 	});
 
-	it('migrates v1 content to v2 losslessly and is idempotent', () => {
+	it('compiles set blocks with =, +=, -= and wraps their conditions', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		const compileSet = (set: any) =>
+			compileVisualPassage({blocks: [set], version: 2}, story, story.passages[0].id);
+
+		// Plain assignment.
+		expect(
+			compileSet({
+				id: 'set-1',
+				kind: 'set',
+				operation: '=',
+				variableId: state.id,
+				value: {kind: 'literal', value: 4}
+			})
+		).toBe('<<set $Trust = 4>>');
+
+		// Increment.
+		expect(
+			compileSet({
+				id: 'set-2',
+				kind: 'set',
+				operation: '+=',
+				variableId: state.id,
+				value: {kind: 'literal', value: 1}
+			})
+		).toBe('<<set $Trust += 1>>');
+
+		// Decrement.
+		expect(
+			compileSet({
+				id: 'set-3',
+				kind: 'set',
+				operation: '-=',
+				variableId: state.id,
+				value: {kind: 'literal', value: 2}
+			})
+		).toBe('<<set $Trust -= 2>>');
+
+		// A compilable condition wraps the whole set.
+		expect(
+			compileSet({
+				id: 'set-4',
+				kind: 'set',
+				operation: '=',
+				variableId: state.id,
+				value: {kind: 'literal', value: 4},
+				condition: bin(state.id, '>', 1)
+			})
+		).toBe('<<if ($Trust > 1)>><<set $Trust = 4>><</if>>');
+
+		// A missing target state skips the block entirely.
+		expect(
+			compileSet({
+				id: 'set-5',
+				kind: 'set',
+				operation: '=',
+				variableId: 'gone',
+				value: {kind: 'literal', value: 4}
+			})
+		).toBe('');
+
+		// A missing value sub-expression also skips it.
+		expect(
+			compileSet({
+				id: 'set-6',
+				kind: 'set',
+				operation: '=',
+				variableId: state.id,
+				value: {kind: 'binary', operator: '+', left: {kind: 'variable', variableId: 'gone'}, right: {kind: 'literal', value: 1}}
+			})
+		).toBe('');
+
+		// A non-compilable condition still emits the block body unwrapped.
+		expect(
+			compileSet({
+				id: 'set-7',
+				kind: 'set',
+				operation: '=',
+				variableId: state.id,
+				value: {kind: 'literal', value: 4},
+				condition: bin('gone', '==', 1)
+			})
+		).toBe('<<set $Trust = 4>>');
+	});
+
+	it('migrates v1 content to v2 losslessly', () => {
 		const v1: VisualPassageContentV1 = {
 			body: 'Hello.',
-			bodyCondition: {operator: 'equals', stateId: 's1', value: true},
+			bodyCondition: {
+				kind: 'binary',
+				operator: '==',
+				left: {kind: 'variable', variableId: 's1'},
+				right: {kind: 'literal', value: true}
+			},
 			choices: [
 				{
 					actions: [],
-					condition: {operator: 'notEquals', stateId: 's1', value: false},
+					condition: {
+						kind: 'binary',
+						operator: '!=',
+						left: {kind: 'variable', variableId: 's1'},
+						right: {kind: 'literal', value: false}
+					},
 					id: 'choice-1',
 					label: 'Leave',
 					targetPassageId: 'passage-2'
@@ -817,19 +1000,21 @@ describe('visual passage utilities', () => {
 		});
 		expect(migrated.blocks[1]).toEqual({
 			actions: [],
-			condition: {operator: 'notEquals', stateId: 's1', value: false},
+			condition: {
+				kind: 'binary',
+				operator: '!=',
+				left: {kind: 'variable', variableId: 's1'},
+				right: {kind: 'literal', value: false}
+			},
 			id: 'choice-1',
 			kind: 'choice',
 			label: 'Leave',
 			targetPassageId: 'passage-2'
 		});
 
-		// An empty v1 passage becomes an empty block list.
 		expect(migrateVisualContent({body: '', choices: [], version: 1})).toEqual(
 			{blocks: [], version: 2}
 		);
-
-		// A v1 body without choices still becomes a single text block.
 		expect(
 			migrateVisualContent({body: 'Only text.', choices: [], version: 1})
 				.blocks
@@ -895,7 +1080,7 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe(
-			'<<switch $nrp_mood>><<case 1>>Happy.<</case>><<case "red">>Red.<</case>><<case true>>Yes.<</case>><<default>>Unknown.<</default>><</switch>>'
+			'<<switch $Mood>><<case 1>>Happy.<</case>><<case "red">>Red.<</case>><<case true>>Yes.<</case>><<default>>Unknown.<</default>><</switch>>'
 		);
 	});
 
@@ -932,11 +1117,7 @@ describe('visual passage utilities', () => {
 									value: 1
 								}
 							],
-							condition: {
-								operator: 'equals',
-								stateId: state.id,
-								value: 1
-							},
+							condition: bin(state.id, '==', 1),
 							defaultBlocks: [],
 							id: 'switch-1',
 							kind: 'switch',
@@ -949,7 +1130,7 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe(
-			'<<if $nrp_mood is 1>><<switch $nrp_mood>><<case 1>>[[Leave->Next]]<</case>><</switch>><</if>>'
+			'<<if ($Mood == 1)>><<switch $Mood>><<case 1>>[[Leave->Next]]<</case>><</switch>><</if>>'
 		);
 	});
 
@@ -1035,7 +1216,7 @@ describe('visual passage utilities', () => {
 				story,
 				story.passages[0].id
 			)
-		).toBe('<<for _item range $nrp_inv>>Item:\n<<print _item>><</for>>');
+		).toBe('<<for _item range $Inventory>>Item:\n<<print _item>><</for>>');
 	});
 
 	it('wraps loop blocks in their conditions', () => {
@@ -1056,11 +1237,7 @@ describe('visual passage utilities', () => {
 					blocks: [
 						{
 							blocks: [{id: 'text-1', kind: 'text', text: 'Item.'}],
-							condition: {
-								operator: 'includes',
-								stateId: state.id,
-								value: 'a'
-							},
+							condition: bin(state.id, 'includes', 'a'),
 							id: 'loop-1',
 							kind: 'loop',
 							stateId: state.id
@@ -1072,7 +1249,7 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe(
-			'<<if $nrp_inv.includes("a")>><<for _item range $nrp_inv>>Item.<</for>><</if>>'
+			'<<if ($Inventory).includes("a")>><<for _item range $Inventory>>Item.<</for>><</if>>'
 		);
 	});
 
@@ -1108,5 +1285,152 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe('');
+	});
+});
+
+describe('trace mode (P3)', () => {
+	const state = {
+		defaultValue: 0,
+		id: 'trust',
+		name: 'Trust',
+		type: 'number' as const
+	};
+
+	function tracedStory() {
+		const story = fakeStory(2);
+
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Hallway';
+		story.visual = {states: [state], version: 1};
+
+		return story;
+	}
+
+	it('wraps unprefixed blocks with start/end markers only in trace mode', () => {
+		const story = tracedStory();
+		const plain = compileVisualPassage(
+			{blocks: [{id: 'text-1', kind: 'text', text: 'Hello.'}], version: 2},
+			story,
+			story.passages[0].id
+		);
+		const traced = compileVisualPassage(
+			{blocks: [{id: 'text-1', kind: 'text', text: 'Hello.'}], version: 2},
+			story,
+			story.passages[0].id,
+			{trace: true}
+		);
+
+		// Non-trace output is untouched.
+		expect(plain).toBe('Hello.');
+		// Trace mode wraps the block with start and end markers.
+		expect(traced).toBe(
+			'<<script>>window.__trace.push({b:"text-1",ev:"s"})<</script>>Hello.' +
+				'<<script>>window.__trace.push({b:"text-1",ev:"e"})<</script>>'
+		);
+	});
+
+	it('records evaluated conditions on gated blocks', () => {
+		const story = tracedStory();
+		const traced = compileVisualPassage(
+			{
+				blocks: [
+					{
+						condition: {
+							kind: 'binary',
+							operator: '>',
+							left: {kind: 'variable', variableId: state.id},
+							right: {kind: 'literal', value: 5}
+						},
+						id: 'text-1',
+						kind: 'text',
+						text: 'High.'
+					}
+				],
+				version: 2
+			},
+			story,
+			story.passages[0].id,
+			{trace: true}
+		);
+
+		expect(traced).toContain(
+			'<<if (window.__trace.push({c:"text-1",r:($Trust > 5)}), ($Trust > 5))>>'
+		);
+		expect(traced).toContain('<<script>>window.__trace.push({b:"text-1",ev:"s"})<</script>>');
+		expect(traced).toContain('<<script>>window.__trace.push({b:"text-1",ev:"e"})<</script>>');
+	});
+
+	it('records branch conditions per branch', () => {
+		const story = tracedStory();
+		const traced = compileVisualPassage(
+			{
+				blocks: [
+					{
+						branches: [
+							{
+								blocks: [{id: 't1', kind: 'text', text: 'A'}],
+								condition: {
+									kind: 'binary',
+									operator: '==',
+									left: {kind: 'variable', variableId: state.id},
+									right: {kind: 'literal', value: 1}
+								},
+								id: 'b1'
+							},
+							{blocks: [{id: 't2', kind: 'text', text: 'B'}], id: 'b2'}
+						],
+						id: 'branch-1',
+						kind: 'branch'
+					}
+				],
+				version: 2
+			},
+			story,
+			story.passages[0].id,
+			{trace: true}
+		);
+
+		expect(traced).toContain(
+			'<<if (window.__trace.push({c:"branch-1",r:($Trust == 1)}), ($Trust == 1))>>'
+		);
+		expect(traced).toContain('<<else>>');
+		expect(traced).toContain('<<script>>window.__trace.push({b:"branch-1",ev:"s"})<</script>>');
+		expect(traced).toContain('<<script>>window.__trace.push({b:"branch-1",ev:"e"})<</script>>');
+	});
+
+	it('keeps nested blocks traced inside loops and switches', () => {
+		const listState = {
+			defaultValue: ['a'],
+			id: 'inv',
+			name: 'Inventory',
+			type: 'list' as const
+		};
+		const story = fakeStory(1);
+
+		story.passages[0].name = 'Start';
+		story.visual = {states: [listState], version: 1};
+		const traced = compileVisualPassage(
+			{
+				blocks: [
+					{
+						blocks: [{id: 'inner', kind: 'text', text: 'Item.'}],
+						id: 'loop-1',
+						kind: 'loop',
+						stateId: listState.id
+					}
+				],
+				version: 2
+			},
+			story,
+			story.passages[0].id,
+			{trace: true}
+		);
+
+		expect(traced).toContain(
+			'<<script>>window.__trace.push({b:"inner",ev:"s"})<</script>>'
+		);
+		expect(traced).toContain(
+			'<<script>>window.__trace.push({b:"inner",ev:"e"})<</script>>'
+		);
 	});
 });

@@ -64,14 +64,14 @@ export interface VisualPassageChoice {
 	label: string;
 	/** Target passage ID. An empty value means the choice is incomplete. */
 	targetPassageId: string;
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 	actions: VisualStateAction[];
 }
 
 export interface VisualPassageContentV1 {
 	/** Plain passage body. SugarCube source is generated from this data. */
 	body: string;
-	bodyCondition?: VisualCondition;
+	bodyCondition?: VisualExpression;
 	choices: VisualPassageChoice[];
 	version: 1;
 }
@@ -91,6 +91,7 @@ export type VisualBlock =
 	| VisualChoiceBlock
 	| VisualInteractionBlock
 	| VisualVariableBlock
+	| VisualSetBlock
 	| VisualRawBlock
 	| VisualIncludeBlock
 	| VisualBranchBlock
@@ -101,7 +102,7 @@ export interface VisualTextBlock {
 	kind: 'text';
 	id: string;
 	text: string;
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 }
 
 export interface VisualChoiceBlock {
@@ -114,7 +115,7 @@ export interface VisualChoiceBlock {
 	 * targetPassageId. The target passage id is ignored while set.
 	 */
 	specialTarget?: 'back' | 'return';
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 	actions: VisualStateAction[];
 }
 
@@ -127,7 +128,7 @@ export interface VisualInteractionBlock {
 	operation: 'reveal' | 'append' | 'remove';
 	/** Content shown, appended, or initially present in the hook element. */
 	content: string;
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 }
 
 export interface VisualVariableBlock {
@@ -141,7 +142,22 @@ export interface VisualVariableBlock {
 	source?: 'state' | 'loopItem';
 	/** Story state whose value is printed. An empty value means the block is incomplete. */
 	stateId: string | undefined;
-	condition?: VisualCondition;
+	condition?: VisualExpression;
+}
+
+/**
+ * Mutates a story state by assigning a computed expression: `=` sets it,
+ * `+=`/`-=` add/subtract a number. An empty variableId means the block is
+ * incomplete.
+ */
+export interface VisualSetBlock {
+	kind: 'set';
+	id: string;
+	/** Story state being mutated. An empty value means the block is incomplete. */
+	variableId: string;
+	operation: '=' | '+=' | '-=';
+	value: VisualExpression;
+	condition?: VisualExpression;
 }
 
 /**
@@ -153,7 +169,7 @@ export interface VisualRawBlock {
 	id: string;
 	/** Raw SugarCube source. An empty value means the block is incomplete. */
 	sugar: string;
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 }
 
 export interface VisualIncludeBlock {
@@ -161,7 +177,7 @@ export interface VisualIncludeBlock {
 	id: string;
 	/** Target passage ID. An empty value means the block is incomplete. */
 	targetPassageId: string;
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 }
 
 export interface VisualBranchBlock {
@@ -172,7 +188,7 @@ export interface VisualBranchBlock {
 
 export interface VisualBranch {
 	id: string;
-	condition?: VisualCondition; // undefined means the 'else' branch: must be last and unique
+	condition?: VisualExpression; // undefined means the 'else' branch: must be last and unique
 	blocks: VisualBlock[];
 }
 
@@ -188,7 +204,7 @@ export interface VisualSwitchBlock {
 	cases: VisualSwitchCase[];
 	/** Blocks run when no case value matches. */
 	defaultBlocks: VisualBlock[];
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 }
 
 export interface VisualSwitchCase {
@@ -208,7 +224,7 @@ export interface VisualLoopBlock {
 	/** List state iterated over. An empty value means the block is incomplete. */
 	stateId: string;
 	blocks: VisualBlock[];
-	condition?: VisualCondition;
+	condition?: VisualExpression;
 }
 
 export type VisualStateType = 'boolean' | 'number' | 'text' | 'list';
@@ -226,17 +242,32 @@ export interface VisualStoryContentV1 {
 	version: 1;
 }
 
-export interface VisualCondition {
-	operator:
-		| 'equals'
-		| 'notEquals'
-		| 'greaterThan'
-		| 'lessThan'
-		| 'includes'
-		| 'notIncludes';
-	stateId: string;
-	value: boolean | number | string;
-}
+export type VisualBinaryOperator =
+	| '=='
+	| '!='
+	| '>'
+	| '>='
+	| '<'
+	| '<='
+	| '&&'
+	| '||'
+	| '+'
+	| '-'
+	| 'includes'
+	| 'notIncludes';
+
+export type VisualExpression =
+	| {kind: 'literal'; value: boolean | number | string}
+	| {kind: 'variable'; variableId: string}
+	| {kind: 'loopItem'}
+	| {kind: 'unary'; operator: '!'; operand: VisualExpression}
+	| {
+			kind: 'binary';
+			operator: VisualBinaryOperator;
+			left: VisualExpression;
+			right: VisualExpression;
+	  }
+	| {kind: 'free'; code: string};
 
 export interface VisualStateAction {
 	operation: 'set' | 'increase' | 'decrease' | 'push' | 'remove' | 'clear';

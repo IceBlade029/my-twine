@@ -1,4 +1,4 @@
-import {act, fireEvent, render, screen} from '@testing-library/react';
+import {act, fireEvent, render, screen, within} from '@testing-library/react';
 import type {TFunction} from 'i18next';
 import * as React from 'react';
 import {
@@ -153,6 +153,89 @@ describe('<PassageVisualEditor>', () => {
 		expect(
 			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
 		).not.toBeInTheDocument();
+	});
+
+	it('adds and completes a raw block with a SugarCube textarea', () => {
+		const {story} = renderComponent();
+
+		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addRawBlock'));
+
+		// The fresh block is visibly incomplete until sugar is typed.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockIncomplete')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindRaw')
+		).toBeInTheDocument();
+
+		// Typing sugar compiles verbatim into the generated source.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.rawSugar'),
+			{target: {value: '<<set $x = 1>>'}}
+		);
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('<<set $x = 1>>');
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
+		).not.toBeInTheDocument();
+	});
+
+	it('switches a variable block between state and loop item sources', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+		});
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addVariableBlock')
+		);
+
+		// New variable blocks default to the state source: the state picker is
+		// shown and the loop item hint is not.
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.variableState')
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.loopItemHint')
+		).not.toBeInTheDocument();
+
+		// Switching to the loop item source hides the state picker, shows the
+		// hint, and compiles to <<print _item>>.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.variableSource'),
+			{target: {value: 'loopItem'}}
+		);
+
+		expect(
+			screen.queryByLabelText('dialogs.passageEdit.visual.variableState')
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.loopItemHint')
+		).toBeInTheDocument();
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('<<print _item>>');
+
+		// Switching back to the state source restores the state picker.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.variableSource'),
+			{target: {value: 'state'}}
+		);
+
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.variableState')
+		).toBeInTheDocument();
 	});
 
 	it('adds and completes an include block with a passage picker', () => {
@@ -327,6 +410,142 @@ describe('<PassageVisualEditor>', () => {
 		).toBeInTheDocument();
 		expect(screen.queryByText('no-visual-editor')).not.toBeInTheDocument();
 		confirmSpy.mockRestore();
+	});
+
+	it('adds and completes a switch block with cases', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Mood', type: 'number'},
+					{
+						defaultValue: ['a'],
+						id: 'state-2',
+						name: 'Inventory',
+						type: 'list'
+					}
+				],
+				version: 1
+			};
+		});
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addSwitchBlock')
+		);
+
+		// The fresh block is visibly incomplete until a state is chosen.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockIncomplete')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindSwitch')
+		).toBeInTheDocument();
+
+		// The state select only offers non-list states.
+		const stateSelect = screen.getByLabelText(
+			'dialogs.passageEdit.visual.switchState'
+		);
+
+		expect(stateSelect).not.toHaveTextContent('Inventory');
+		fireEvent.change(stateSelect, {target: {value: 'state-1'}});
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
+		).not.toBeInTheDocument();
+
+		// Adding a case renders a value input and a nested block list; the
+		// default section is always present.
+		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addCase'));
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.switchCaseValue')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.switchDefault')
+		).toBeInTheDocument();
+
+		// Typing the case value compiles into <<switch>> / <<case>> macros.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.switchCaseValue'),
+			{target: {value: '1'}}
+		);
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent(
+			'<<switch $nrp_state_1>><<case 1>><</case>><</switch>>'
+		);
+	});
+
+	it('adds and completes a loop block with a body', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: ['a'], id: 'state-1', name: 'Inventory', type: 'list'},
+					{defaultValue: 0, id: 'state-2', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+		});
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addLoopBlock')
+		);
+
+		// The fresh block is visibly incomplete until a list state is chosen.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockIncomplete')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.blockKindLoop')
+		).toBeInTheDocument();
+
+		// The state select only offers list states.
+		const stateSelect = screen.getByLabelText(
+			'dialogs.passageEdit.visual.loopState'
+		);
+
+		expect(stateSelect).not.toHaveTextContent('Trust');
+		fireEvent.change(stateSelect, {target: {value: 'state-1'}});
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
+		).not.toBeInTheDocument();
+
+		// The body renders a nested block list: add a text block inside it.
+		const loopBody = screen.getByLabelText(
+			'dialogs.passageEdit.visual.loopBody'
+		);
+
+		fireEvent.click(within(loopBody).getByText('Add text block'));
+		const body = within(loopBody).getByLabelText(
+			'dialogs.passageEdit.visual.body'
+		);
+
+		fireEvent.change(body, {target: {value: 'Item: '}});
+		fireEvent.blur(body);
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('<<for _item range $nrp_state_1>>Item:<</for>>');
+	});
+
+	it('shows a hint when a loop block has no list states to choose from', () => {
+		renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+		});
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addLoopBlock')
+		);
+
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.loopListHint')
+		).toBeInTheDocument();
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.loopState')
+		).toBeDisabled();
 	});
 
 	it('renders block shells with a data-depth attribute and a kind icon', () => {
@@ -687,6 +906,61 @@ describe('simulator', () => {
 			{target: {value: '7'}}
 		);
 		expect(body()).not.toHaveClass('is-hidden');
+	});
+
+	it('dims non-matching switch cases and keeps the matching case active', () => {
+		const {container} = renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Mood', type: 'number'}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						cases: [
+							{
+								blocks: [{id: 't1', kind: 'text', text: 'Happy.'}],
+								id: 'c1',
+								value: 1
+							},
+							{
+								blocks: [{id: 't2', kind: 'text', text: 'Neutral.'}],
+								id: 'c2',
+								value: 0
+							}
+						],
+						defaultBlocks: [{id: 't3', kind: 'text', text: 'Unknown.'}],
+						id: 'switch-1',
+						kind: 'switch',
+						stateId: 'state-1'
+					}
+				],
+				version: 2
+			};
+		});
+		const cases = () => container.querySelectorAll('.switch-case');
+		const defaultSection = () => container.querySelector('.switch-default');
+
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.simulatorToggle')
+		);
+
+		// The default value 0 matches the second case: the first case and the
+		// default section are dimmed, the matching case is not.
+		expect(cases()[0]).toHaveClass('is-inactive');
+		expect(cases()[1]).not.toHaveClass('is-inactive');
+		expect(defaultSection()).toHaveClass('is-inactive');
+
+		// A value matching no case activates the default section instead.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.simulatorValue'),
+			{target: {value: '5'}}
+		);
+		expect(cases()[0]).toHaveClass('is-inactive');
+		expect(cases()[1]).toHaveClass('is-inactive');
+		expect(defaultSection()).not.toHaveClass('is-inactive');
 	});
 
 	it('dims inactive branches and keeps the matching branch active', () => {

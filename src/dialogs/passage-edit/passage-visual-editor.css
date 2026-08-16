@@ -115,8 +115,36 @@
 	width: 100%;
 }
 
-.visual-passage-branch .branch.is-inactive {
+.visual-passage-branch .branch.is-inactive,
+.visual-passage-switch .switch-case.is-inactive,
+.visual-passage-switch .switch-default.is-inactive {
 	opacity: 0.4;
+}
+
+.visual-passage-switch,
+.visual-passage-loop {
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+}
+
+.switch-case-heading {
+	align-items: center;
+	display: grid;
+	gap: var(--grid-size);
+	grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+}
+
+.switch-case,
+.switch-default,
+.loop-body {
+	background: var(--light-gray-translucent);
+	border: 1px solid var(--light-gray);
+	border-radius: var(--corner-round);
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+	padding: var(--grid-size);
 }
 
 .visual-passage-choices {
@@ -128,7 +156,9 @@
 .visual-passage-choice,
 .visual-passage-variable,
 .visual-passage-include,
-.visual-passage-interaction {
+.visual-passage-interaction,
+.visual-passage-switch,
+.visual-passage-loop {
 	background: var(--light-gray-translucent);
 	border: 1px solid var(--light-gray);
 	border-radius: var(--corner-round);
@@ -144,6 +174,9 @@
 .visual-passage-include select,
 .visual-passage-interaction input,
 .visual-passage-interaction select,
+.visual-passage-switch select,
+.visual-passage-switch input,
+.visual-passage-loop select,
 .condition-editor input,
 .condition-editor select,
 .action-row input,

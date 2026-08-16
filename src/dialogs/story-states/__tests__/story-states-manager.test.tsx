@@ -158,6 +158,217 @@ describe('<StoryStatesManager>', () => {
 		expect(passageText()).toHaveTextContent('<<link "Reveal">>');
 	});
 
+	it('strips a raw block condition referencing a deleted state', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: {
+							operator: 'greaterThan',
+							stateId: 'state-1',
+							value: 2
+						},
+						id: 'raw-1',
+						kind: 'raw',
+						sugar: '<<set $custom = 1>>'
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		// The condition compiles while the state exists.
+		expect(passageText()).toHaveTextContent(/<<if \$nrp_/);
+
+		// Deleting the state strips the raw block's condition but keeps the
+		// block and its sugar, like a text block.
+		fireEvent.click(screen.getByText('×'));
+
+		expect(passageText()).not.toHaveTextContent(/<<if/);
+		expect(passageText()).toHaveTextContent('<<set $custom = 1>>');
+	});
+
+	it('leaves loop item variable blocks untouched when a state is deleted', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: {
+							operator: 'greaterThan',
+							stateId: 'state-1',
+							value: 1
+						},
+						id: 'var-loop',
+						kind: 'variable',
+						source: 'loopItem',
+						stateId: undefined
+					},
+					{
+						id: 'var-state',
+						kind: 'variable',
+						source: 'state',
+						stateId: 'state-1'
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		// Both blocks compile while the state exists.
+		expect(passageText()).toHaveTextContent('<<print _item>>');
+		expect(passageText()).toHaveTextContent('<<print $nrp_state_1>>');
+
+		// Deleting the state strips both conditions but keeps the loop item
+		// block (no state id to clear); the state block becomes incomplete.
+		fireEvent.click(screen.getByText('×'));
+
+		expect(passageText()).toHaveTextContent('<<print _item>>');
+		expect(passageText()).not.toHaveTextContent('<<print $nrp_state_1>>');
+		expect(passageText()).not.toHaveTextContent(/<<if/);
+	});
+
+	it('clears switch and loop state ids and strips nested conditions when states are deleted', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					},
+					{
+						defaultValue: ['a'],
+						id: 'state-2',
+						name: 'Inventory',
+						type: 'list'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						cases: [
+							{
+								blocks: [
+									{
+										condition: {
+											operator: 'equals',
+											stateId: 'state-1',
+											value: 1
+										},
+										id: 'text-1',
+										kind: 'text',
+										text: 'Happy.'
+									}
+								],
+								id: 'case-1',
+								value: 1
+							}
+						],
+						defaultBlocks: [],
+						id: 'switch-1',
+						kind: 'switch',
+						stateId: 'state-1'
+					},
+					{
+						blocks: [
+							{
+								condition: {
+									operator: 'includes',
+									stateId: 'state-1',
+									value: 1
+								},
+								id: 'text-2',
+								kind: 'text',
+								text: 'Item.'
+							}
+						],
+						id: 'loop-1',
+						kind: 'loop',
+						stateId: 'state-2'
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+		// Only the per-state delete buttons (the list state's item remove
+		// buttons also render as '×', nested inside the row).
+		const stateDeleteButtons = () =>
+			screen
+				.getAllByText('×')
+				.filter(
+					button =>
+						button.parentElement?.classList.contains('state-row') ?? false
+				);
+
+		// Both blocks compile while their states exist.
+		expect(passageText()).toHaveTextContent('<<switch $nrp_state_1>>');
+		expect(passageText()).toHaveTextContent(
+			'<<for _item range $nrp_state_2>>'
+		);
+
+		// Deleting the switch's state clears its state id (the switch stops
+		// compiling) and strips the loop body's condition on the deleted state.
+		fireEvent.click(stateDeleteButtons()[0]);
+
+		expect(passageText()).not.toHaveTextContent('<<switch');
+		expect(passageText()).not.toHaveTextContent('<<if $nrp_state_1');
+		expect(passageText()).toHaveTextContent(
+			'<<for _item range $nrp_state_2>>Item.<</for>>'
+		);
+
+		// Deleting the loop's state clears its state id too: nothing compiles.
+		fireEvent.click(stateDeleteButtons()[0]);
+
+		expect(passageText()).not.toHaveTextContent('<<for');
+		expect(passageText()).not.toHaveTextContent(/<<if/);
+	});
+
 	it('defaults a new list state to an empty list', () => {
 		const story = renderComponent();
 

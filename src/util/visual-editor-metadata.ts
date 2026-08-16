@@ -7,7 +7,11 @@ import {
 	VisualCondition,
 	VisualIncludeBlock,
 	VisualInteractionBlock,
+	VisualLoopBlock,
+	VisualRawBlock,
 	VisualStoryContentV1,
+	VisualSwitchBlock,
+	VisualSwitchCase,
 	VisualTextBlock,
 	VisualVariableBlock
 } from '../store/stories';
@@ -38,13 +42,30 @@ interface SerializedBranch extends Omit<VisualBranch, 'blocks'> {
 	blocks: SerializedBlock[];
 }
 
+interface SerializedSwitchBlock
+	extends Omit<VisualSwitchBlock, 'cases' | 'defaultBlocks'> {
+	cases: SerializedSwitchCase[];
+	defaultBlocks: SerializedBlock[];
+}
+
+interface SerializedSwitchCase extends Omit<VisualSwitchCase, 'blocks'> {
+	blocks: SerializedBlock[];
+}
+
+interface SerializedLoopBlock extends Omit<VisualLoopBlock, 'blocks'> {
+	blocks: SerializedBlock[];
+}
+
 type SerializedBlock =
 	| VisualTextBlock
 	| SerializedChoiceBlock
 	| VisualInteractionBlock
 	| VisualVariableBlock
+	| VisualRawBlock
 	| SerializedIncludeBlock
-	| SerializedBranchBlock;
+	| SerializedBranchBlock
+	| SerializedSwitchBlock
+	| SerializedLoopBlock;
 
 interface SerializedPassageV1 {
 	body: string;
@@ -104,6 +125,11 @@ function serializeBlockList(
 			return block;
 		}
 
+		// Raw blocks hold verbatim SugarCube: serialize verbatim.
+		if (block.kind === 'raw') {
+			return block;
+		}
+
 		if (block.kind === 'branch') {
 			return {
 				...block,
@@ -111,6 +137,26 @@ function serializeBlockList(
 					...branch,
 					blocks: serializeBlockList(branch.blocks, story)
 				}))
+			};
+		}
+
+		// Switch and loop blocks store their state id verbatim (states are not
+		// remapped); only their nested block lists are serialized recursively.
+		if (block.kind === 'switch') {
+			return {
+				...block,
+				cases: block.cases.map(caseItem => ({
+					...caseItem,
+					blocks: serializeBlockList(caseItem.blocks, story)
+				})),
+				defaultBlocks: serializeBlockList(block.defaultBlocks, story)
+			};
+		}
+
+		if (block.kind === 'loop') {
+			return {
+				...block,
+				blocks: serializeBlockList(block.blocks, story)
 			};
 		}
 
@@ -206,6 +252,11 @@ function restoreBlockList(
 			return block;
 		}
 
+		// Raw blocks hold verbatim SugarCube: restore verbatim.
+		if (block.kind === 'raw') {
+			return block;
+		}
+
 		if (block.kind === 'branch') {
 			return {
 				...block,
@@ -213,6 +264,26 @@ function restoreBlockList(
 					...branch,
 					blocks: restoreBlockList(branch.blocks, story)
 				}))
+			};
+		}
+
+		// Switch and loop blocks store their state id verbatim; only their
+		// nested block lists are restored recursively.
+		if (block.kind === 'switch') {
+			return {
+				...block,
+				cases: block.cases.map(caseItem => ({
+					...caseItem,
+					blocks: restoreBlockList(caseItem.blocks, story)
+				})),
+				defaultBlocks: restoreBlockList(block.defaultBlocks, story)
+			};
+		}
+
+		if (block.kind === 'loop') {
+			return {
+				...block,
+				blocks: restoreBlockList(block.blocks, story)
 			};
 		}
 

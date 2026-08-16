@@ -2,8 +2,10 @@ import {fakeAppInfo, fakeStory} from '../../test-util';
 import {
 	VisualBranchBlock,
 	VisualChoiceBlock,
+	VisualLoopBlock,
 	VisualPassageContentV1,
-	VisualPassageContentV2
+	VisualPassageContentV2,
+	VisualSwitchBlock
 } from '../../store/stories';
 import {importStories} from '../import';
 import {publishStory} from '../publish';
@@ -273,6 +275,191 @@ describe('visual editor HTML metadata', () => {
 		});
 
 		// The restored model serializes back to exactly the original metadata.
+		expect(serializeVisualEditorMetadata(restored)).toEqual(
+			serializeVisualEditorMetadata(story)
+		);
+	});
+
+	it('round trips raw blocks and loop item variable blocks verbatim', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: false,
+			id: 'met-character',
+			name: 'Met character',
+			type: 'boolean' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Next';
+		story.passages[0].visual = {
+			blocks: [
+				{
+					condition: {
+						operator: 'equals',
+						stateId: state.id,
+						value: true
+					},
+					id: 'raw-1',
+					kind: 'raw',
+					sugar: '<<set $custom = $nrp_met_character>>'
+				},
+				{
+					id: 'var-1',
+					kind: 'variable',
+					source: 'loopItem',
+					stateId: undefined
+				}
+			],
+			version: 2
+		};
+		story.passages[0].text = compileVisualPassage(
+			story.passages[0].visual,
+			story,
+			story.passages[0].id
+		);
+		const [restored] = importStories(
+			publishStory(story, fakeAppInfo(), {startOptional: true})
+		);
+		const restoredVisual = restored.passages[0]
+			.visual as VisualPassageContentV2;
+
+		// Raw blocks hold no passage references: they survive the round trip
+		// verbatim, including their condition and unescaped sugar.
+		expect(restoredVisual.blocks[0]).toEqual({
+			condition: {operator: 'equals', stateId: state.id, value: true},
+			id: 'raw-1',
+			kind: 'raw',
+			sugar: '<<set $custom = $nrp_met_character>>'
+		});
+
+		// Loop item variable blocks have no state: source survives verbatim.
+		expect(restoredVisual.blocks[1]).toEqual({
+			id: 'var-1',
+			kind: 'variable',
+			source: 'loopItem',
+			stateId: undefined
+		});
+
+		// The restored model serializes back to exactly the original metadata.
+		expect(serializeVisualEditorMetadata(restored)).toEqual(
+			serializeVisualEditorMetadata(story)
+		);
+	});
+
+	it('round trips switch and loop blocks with nested blocks and case values', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: 0,
+			id: 'met-mood',
+			name: 'Mood',
+			type: 'number' as const
+		};
+		const listState = {
+			defaultValue: ['a'],
+			id: 'met-inv',
+			name: 'Inventory',
+			type: 'list' as const
+		};
+
+		story.visual = {states: [state, listState], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Next';
+		story.passages[0].visual = {
+			blocks: [
+				{
+					cases: [
+						{
+							blocks: [
+								{
+									condition: {
+										operator: 'equals',
+										stateId: state.id,
+										value: 1
+									},
+									id: 'var-1',
+									kind: 'variable',
+									stateId: state.id
+								},
+								{
+									id: 'inc-1',
+									kind: 'include',
+									targetPassageId: story.passages[1].id
+								}
+							],
+							id: 'case-1',
+							value: 1
+						},
+						{blocks: [], id: 'case-2', value: 'fallback'}
+					],
+					defaultBlocks: [
+						{id: 'text-d', kind: 'text', text: 'Default.'}
+					],
+					id: 'switch-1',
+					kind: 'switch',
+					stateId: state.id
+				},
+				{
+					blocks: [
+						{
+							id: 'var-loop',
+							kind: 'variable',
+							source: 'loopItem',
+							stateId: undefined
+						}
+					],
+					id: 'loop-1',
+					kind: 'loop',
+					stateId: listState.id
+				}
+			],
+			version: 2
+		};
+		story.passages[0].text = compileVisualPassage(
+			story.passages[0].visual,
+			story,
+			story.passages[0].id
+		);
+		const [restored] = importStories(
+			publishStory(story, fakeAppInfo(), {startOptional: true})
+		);
+		const restoredVisual = restored.passages[0]
+			.visual as VisualPassageContentV2;
+		const restoredSwitch = restoredVisual.blocks[0] as VisualSwitchBlock;
+		const restoredLoop = restoredVisual.blocks[1] as VisualLoopBlock;
+
+		// Switch and loop state ids are stored verbatim; states are not remapped.
+		expect(restoredSwitch.stateId).toBe(state.id);
+		expect(restoredSwitch.cases).toEqual([
+			{
+				blocks: [
+					{
+						condition: {operator: 'equals', stateId: state.id, value: 1},
+						id: 'var-1',
+						kind: 'variable',
+						stateId: state.id
+					},
+					{
+						id: 'inc-1',
+						kind: 'include',
+						targetPassageId: restored.passages[1].id
+					}
+				],
+				id: 'case-1',
+				value: 1
+			},
+			{blocks: [], id: 'case-2', value: 'fallback'}
+		]);
+		expect(restoredSwitch.defaultBlocks).toEqual([
+			{id: 'text-d', kind: 'text', text: 'Default.'}
+		]);
+		expect(restoredLoop.stateId).toBe(listState.id);
+		expect(restoredLoop.blocks).toEqual([
+			{id: 'var-loop', kind: 'variable', source: 'loopItem', stateId: undefined}
+		]);
+
+		// The restored model serializes back to exactly the original metadata:
+		// the nested include target remaps by name and case values stay verbatim.
 		expect(serializeVisualEditorMetadata(restored)).toEqual(
 			serializeVisualEditorMetadata(story)
 		);

@@ -200,11 +200,34 @@ function stripStateReferences(
 		}
 
 		// A variable block whose state was deleted becomes incomplete; its
-		// condition is stripped like any other block's.
+		// condition is stripped like any other block's. A loop item block has
+		// no state, so nothing to clear: only its condition is stripped.
 		if (block.kind === 'variable') {
 			return {
 				...block,
-				stateId: statesById.has(block.stateId) ? block.stateId : '',
+				stateId:
+					block.source === 'loopItem' || block.stateId === undefined
+						? block.stateId
+						: statesById.has(block.stateId)
+							? block.stateId
+							: '',
+				condition:
+					block.condition &&
+					isConditionCompatible(
+						block.condition,
+						statesById.get(block.condition.stateId)
+					)
+						? block.condition
+						: undefined
+			};
+		}
+
+		// A raw block is like a text block: its condition is stripped when the
+		// referenced state is deleted, but the block itself (and its sugar)
+		// survives.
+		if (block.kind === 'raw') {
+			return {
+				...block,
 				condition:
 					block.condition &&
 					isConditionCompatible(
@@ -235,6 +258,50 @@ function stripStateReferences(
 		if (block.kind === 'interaction') {
 			return {
 				...block,
+				condition:
+					block.condition &&
+					isConditionCompatible(
+						block.condition,
+						statesById.get(block.condition.stateId)
+					)
+						? block.condition
+						: undefined
+			};
+		}
+
+		// A switch block names the state it switches on: a deleted state makes
+		// the block incomplete. Nested case/default blocks are stripped
+		// recursively like any other block list.
+		if (block.kind === 'switch') {
+			return {
+				...block,
+				stateId: statesById.has(block.stateId) ? block.stateId : '',
+				cases: block.cases.map(caseItem => ({
+					...caseItem,
+					blocks: stripStateReferences(caseItem.blocks, statesById)
+				})),
+				defaultBlocks: stripStateReferences(
+					block.defaultBlocks,
+					statesById
+				),
+				condition:
+					block.condition &&
+					isConditionCompatible(
+						block.condition,
+						statesById.get(block.condition.stateId)
+					)
+						? block.condition
+						: undefined
+			};
+		}
+
+		// A loop block names the list state it iterates: a deleted state makes
+		// the block incomplete. The nested body is stripped recursively.
+		if (block.kind === 'loop') {
+			return {
+				...block,
+				stateId: statesById.has(block.stateId) ? block.stateId : '',
+				blocks: stripStateReferences(block.blocks, statesById),
 				condition:
 					block.condition &&
 					isConditionCompatible(

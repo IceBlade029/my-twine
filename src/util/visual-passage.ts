@@ -218,7 +218,34 @@ function compileBlocks(
 			return output;
 		}
 
+		if (block.kind === 'raw') {
+			// Skip whitespace-only blocks, but emit the sugar verbatim once it
+			// has content: no trimming of the actual source.
+			if (block.sugar.trim() === '') {
+				return output;
+			}
+
+			const condition = block.condition
+				? compileCondition(block.condition, states)
+				: undefined;
+
+			output.push(
+				condition ? `<<if ${condition}>>${block.sugar}<</if>>` : block.sugar
+			);
+			return output;
+		}
+
 		if (block.kind === 'variable') {
+			if (block.source === 'loopItem') {
+				const code = '<<print _item>>';
+				const condition = block.condition
+					? compileCondition(block.condition, states)
+					: undefined;
+
+				output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+				return output;
+			}
+
 			const state = states.find(item => item.id === block.stateId);
 
 			if (!state) {
@@ -244,6 +271,69 @@ function compileBlocks(
 			}
 
 			const code = `<<include ${JSON.stringify(target.name)}>>`;
+			const condition = block.condition
+				? compileCondition(block.condition, states)
+				: undefined;
+
+			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+			return output;
+		}
+
+		if (block.kind === 'switch') {
+			const state = states.find(item => item.id === block.stateId);
+
+			// A switch needs a resolvable state and at least one case or a
+			// default body, otherwise there is nothing to compile.
+			if (!state || (block.cases.length === 0 && block.defaultBlocks.length === 0)) {
+				return output;
+			}
+
+			const cases = block.cases
+				.map(
+					caseItem =>
+						`<<case ${sugarCubeValue(
+							caseItem.value
+						)}>>${compileBlocks(
+							caseItem.blocks,
+							states,
+							story,
+							passageId
+						).join('\n')}<</case>>`
+				)
+				.join('');
+			const defaultCode =
+				block.defaultBlocks.length > 0
+					? `<<default>>${compileBlocks(
+							block.defaultBlocks,
+							states,
+							story,
+							passageId
+						).join('\n')}<</default>>`
+					: '';
+			const code = `<<switch ${visualStateVariable(
+				state.id
+			)}>>${cases}${defaultCode}<</switch>>`;
+			const condition = block.condition
+				? compileCondition(block.condition, states)
+				: undefined;
+
+			output.push(condition ? `<<if ${condition}>>${code}<</if>>` : code);
+			return output;
+		}
+
+		if (block.kind === 'loop') {
+			const state = states.find(item => item.id === block.stateId);
+
+			// A loop iterates a list state; any other state type is skipped.
+			if (!state || state.type !== 'list') {
+				return output;
+			}
+
+			const code = `<<for _item range ${visualStateVariable(
+				state.id
+			)}>>${compileBlocks(block.blocks, states, story, passageId).join(
+				'\n'
+			)}<</for>>`;
 			const condition = block.condition
 				? compileCondition(block.condition, states)
 				: undefined;

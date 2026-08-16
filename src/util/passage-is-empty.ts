@@ -12,7 +12,13 @@ function blocksHaveContent(blocks: VisualBlock[]): boolean {
 		}
 
 		if (block.kind === 'variable') {
-			return block.stateId !== '';
+			// A loop item block always prints something; a state block needs a
+			// chosen state.
+			return block.source === 'loopItem' || block.stateId !== '';
+		}
+
+		if (block.kind === 'raw') {
+			return block.sugar.trim() !== '';
 		}
 
 		if (block.kind === 'include') {
@@ -21,6 +27,12 @@ function blocksHaveContent(blocks: VisualBlock[]): boolean {
 
 		if (block.kind === 'interaction') {
 			return block.label !== '' || block.content !== '';
+		}
+
+		// A switch or loop block counts as content once it names a state, like
+		// a variable block; its nested blocks are not considered on their own.
+		if (block.kind === 'switch' || block.kind === 'loop') {
+			return block.stateId !== '';
 		}
 
 		return block.branches.some(branch => blocksHaveContent(branch.blocks));

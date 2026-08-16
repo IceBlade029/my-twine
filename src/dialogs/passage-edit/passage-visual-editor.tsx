@@ -2,12 +2,14 @@ import {v4 as uuid} from '@lukeed/uuid';
 import {
 	IconArrowDown,
 	IconArrowsRight,
+	IconArrowsSplit,
 	IconArrowUp,
 	IconCode,
 	IconFileImport,
 	IconGitBranch,
 	IconPlus,
 	IconPointer,
+	IconRepeat,
 	IconSourceCode,
 	IconTrash,
 	IconTypography,
@@ -27,10 +29,14 @@ import {
 	VisualCondition,
 	VisualIncludeBlock,
 	VisualInteractionBlock,
+	VisualLoopBlock,
 	VisualPassageContent,
 	VisualPassageContentV2,
+	VisualRawBlock,
 	VisualStateAction,
 	VisualStoryState,
+	VisualSwitchBlock,
+	VisualSwitchCase,
 	VisualTextBlock,
 	VisualVariableBlock,
 	updatePassage
@@ -77,6 +83,18 @@ const blockKindMeta: Record<VisualBlock['kind'], BlockKindMeta> = {
 	interaction: {
 		icon: IconPointer,
 		labelKey: 'dialogs.passageEdit.visual.blockKindInteraction'
+	},
+	raw: {
+		icon: IconCode,
+		labelKey: 'dialogs.passageEdit.visual.blockKindRaw'
+	},
+	switch: {
+		icon: IconArrowsSplit,
+		labelKey: 'dialogs.passageEdit.visual.blockKindSwitch'
+	},
+	loop: {
+		icon: IconRepeat,
+		labelKey: 'dialogs.passageEdit.visual.blockKindLoop'
 	}
 };
 
@@ -265,6 +283,33 @@ function activeBranchIndex(
 	const elseIndex = branches.findIndex(item => !item.condition);
 
 	return elseIndex >= 0 ? elseIndex : undefined;
+}
+
+/**
+ * Returns the index of the case that would run for the given simulated
+ * value: the first case whose value strictly equals the simulated state
+ * value. Returns undefined when the simulator is closed or when no case
+ * matches (the default section runs).
+ */
+function activeSwitchCaseIndex(
+	block: VisualSwitchBlock,
+	states: VisualStoryState[],
+	simulated?: Record<string, SimulatedValue>
+) {
+	if (!simulated) {
+		return undefined;
+	}
+
+	const state = states.find(item => item.id === block.stateId);
+	const value = simulated[block.stateId] ?? state?.defaultValue ?? '';
+
+	for (let index = 0; index < block.cases.length; index++) {
+		if (value === block.cases[index].value) {
+			return index;
+		}
+	}
+
+	return undefined;
 }
 
 /** True when a block with `condition` is hidden by the simulated values. */
@@ -743,25 +788,96 @@ interface VariableEditorProps {
 const VariableEditor: React.FC<VariableEditorProps> = props => {
 	const {block, disabled, onUpdate, states} = props;
 	const {t} = useTranslation();
+	const source = block.source ?? 'state';
 
 	return (
 		<div className="visual-passage-variable">
 			<label>
-				<span>{t('dialogs.passageEdit.visual.variableState')}</span>
+				<span>{t('dialogs.passageEdit.visual.variableSource')}</span>
 				<select
+					aria-label={t('dialogs.passageEdit.visual.variableSource')}
 					disabled={disabled}
-					onChange={event => onUpdate({stateId: event.target.value})}
-					value={block.stateId}
+					onChange={event =>
+						onUpdate({
+							source: event.target.value as VisualVariableBlock['source']
+						})
+					}
+					value={source}
 				>
-					<option value="">
-						{t('dialogs.passageEdit.visual.chooseState')}
+					<option value="state">
+						{t('dialogs.passageEdit.visual.sourceState')}
 					</option>
-					{states.map(item => (
-						<option key={item.id} value={item.id}>{item.name}</option>
-					))}
+					<option value="loopItem">
+						{t('dialogs.passageEdit.visual.sourceLoopItem')}
+					</option>
 				</select>
 			</label>
-			{block.stateId === '' && (
+			{source === 'state' ? (
+				<>
+					<label>
+						<span>{t('dialogs.passageEdit.visual.variableState')}</span>
+						<select
+							disabled={disabled}
+							onChange={event =>
+								onUpdate({stateId: event.target.value})
+							}
+							value={block.stateId ?? ''}
+						>
+							<option value="">
+								{t('dialogs.passageEdit.visual.chooseState')}
+							</option>
+							{states.map(item => (
+								<option key={item.id} value={item.id}>{item.name}</option>
+							))}
+						</select>
+					</label>
+					{(block.stateId ?? '') === '' && (
+						<p className="empty-state">
+							{t('dialogs.passageEdit.visual.blockIncomplete')}
+						</p>
+					)}
+				</>
+			) : (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.loopItemHint')}
+				</p>
+			)}
+			<div>
+				<span>{t('dialogs.passageEdit.visual.condition')}</span>
+				<ConditionEditor
+					condition={block.condition}
+					onChange={condition => onUpdate({condition})}
+					states={states}
+				/>
+			</div>
+		</div>
+	);
+};
+
+interface RawBlockEditorProps {
+	block: VisualRawBlock;
+	disabled?: boolean;
+	onUpdate: (props: Partial<VisualRawBlock>) => void;
+	states: VisualStoryState[];
+}
+
+const RawBlockEditor: React.FC<RawBlockEditorProps> = props => {
+	const {block, disabled, onUpdate, states} = props;
+	const {t} = useTranslation();
+
+	return (
+		<div className="visual-passage-raw">
+			<label>
+				<span>{t('dialogs.passageEdit.visual.rawSugar')}</span>
+				<textarea
+					aria-label={t('dialogs.passageEdit.visual.rawSugar')}
+					disabled={disabled}
+					onChange={event => onUpdate({sugar: event.target.value})}
+					placeholder={t('dialogs.passageEdit.visual.rawSugar')}
+					value={block.sugar}
+				/>
+			</label>
+			{block.sugar.trim() === '' && (
 				<p className="empty-state">
 					{t('dialogs.passageEdit.visual.blockIncomplete')}
 				</p>
@@ -1049,6 +1165,247 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 	);
 };
 
+interface SwitchBlockEditorProps {
+	block: VisualSwitchBlock;
+	depth: number;
+	disabled?: boolean;
+	onSaveFlushed: () => void;
+	onSavePending: () => void;
+	onUpdate: (props: Partial<VisualSwitchBlock>) => void;
+	simulated?: Record<string, SimulatedValue>;
+	states: VisualStoryState[];
+	story: Story;
+}
+
+/**
+ * Edits a switch block: the state switched on (boolean/number/text states
+ * only), one nested block list per case plus an add/remove control, and a
+ * default section with its own nested block list. When the simulator is
+ * open, cases whose value does not match the simulated state value are
+ * dimmed; the default section is dimmed when a case matches.
+ */
+const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
+	const {
+		block,
+		depth,
+		disabled,
+		onSaveFlushed,
+		onSavePending,
+		onUpdate,
+		simulated,
+		states,
+		story
+	} = props;
+	const {t} = useTranslation();
+	const switchState = states.find(item => item.id === block.stateId);
+	const switchableStates = states.filter(state => state.type !== 'list');
+	const active = activeSwitchCaseIndex(block, states, simulated);
+	const simulatorOpen = simulated !== undefined;
+
+	function updateCase(index: number, props: Partial<VisualSwitchCase>) {
+		onUpdate({
+			cases: block.cases.map((item, i) =>
+				i === index ? {...item, ...props} : item
+			)
+		});
+	}
+
+	function addCase() {
+		onUpdate({
+			cases: [
+				...block.cases,
+				{blocks: [], id: uuid(), value: stateValuePlaceholder(switchState)}
+			]
+		});
+	}
+
+	function removeCase(index: number) {
+		onUpdate({cases: block.cases.filter((_, i) => i !== index)});
+	}
+
+	return (
+		<div className="visual-passage-switch">
+			<label>
+				<span>{t('dialogs.passageEdit.visual.switchState')}</span>
+				<select
+					aria-label={t('dialogs.passageEdit.visual.switchState')}
+					disabled={disabled || switchableStates.length === 0}
+					onChange={event => onUpdate({stateId: event.target.value})}
+					value={block.stateId}
+				>
+					<option value="">
+						{t('dialogs.passageEdit.visual.chooseState')}
+					</option>
+					{switchableStates.map(item => (
+						<option key={item.id} value={item.id}>{item.name}</option>
+					))}
+				</select>
+			</label>
+			{block.stateId === '' && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.blockIncomplete')}
+				</p>
+			)}
+			{block.cases.map((caseItem, index) => {
+				const inactive =
+					simulatorOpen && (active === undefined || active !== index);
+
+				return (
+					<div
+						className={inactive ? 'switch-case is-inactive' : 'switch-case'}
+						key={caseItem.id}
+					>
+						<div className="switch-case-heading">
+							<span>{t('dialogs.passageEdit.visual.switchCase')}</span>
+							<StateValueInput
+								label={t('dialogs.passageEdit.visual.switchCaseValue')}
+								onChange={value => updateCase(index, {value})}
+								state={switchState}
+								value={caseItem.value}
+							/>
+							<button
+								disabled={disabled}
+								onClick={() => removeCase(index)}
+								type="button"
+							>×</button>
+						</div>
+						<BlockList
+							blocks={caseItem.blocks}
+							depth={depth + 1}
+							disabled={disabled}
+							onChange={blocks => updateCase(index, {blocks})}
+							onSaveFlushed={onSaveFlushed}
+							onSavePending={onSavePending}
+							simulated={simulated}
+							states={states}
+							story={story}
+						/>
+					</div>
+				);
+			})}
+			<button disabled={disabled} onClick={addCase} type="button">
+				{t('dialogs.passageEdit.visual.addCase')}
+			</button>
+			<div
+				className={
+					simulatorOpen && active !== undefined
+						? 'switch-default is-inactive'
+						: 'switch-default'
+				}
+			>
+				<span>{t('dialogs.passageEdit.visual.switchDefault')}</span>
+				<BlockList
+					blocks={block.defaultBlocks}
+					depth={depth + 1}
+					disabled={disabled}
+					onChange={blocks => onUpdate({defaultBlocks: blocks})}
+					onSaveFlushed={onSaveFlushed}
+					onSavePending={onSavePending}
+					simulated={simulated}
+					states={states}
+					story={story}
+				/>
+			</div>
+			<div>
+				<span>{t('dialogs.passageEdit.visual.condition')}</span>
+				<ConditionEditor
+					condition={block.condition}
+					onChange={condition => onUpdate({condition})}
+					states={states}
+				/>
+			</div>
+		</div>
+	);
+};
+
+interface LoopBlockEditorProps {
+	block: VisualLoopBlock;
+	depth: number;
+	disabled?: boolean;
+	onSaveFlushed: () => void;
+	onSavePending: () => void;
+	onUpdate: (props: Partial<VisualLoopBlock>) => void;
+	simulated?: Record<string, SimulatedValue>;
+	states: VisualStoryState[];
+	story: Story;
+}
+
+/**
+ * Edits a loop block: the list state iterated over (list states only, with a
+ * hint when none exist) and a nested block list for the per-item body.
+ */
+const LoopBlockEditor: React.FC<LoopBlockEditorProps> = props => {
+	const {
+		block,
+		depth,
+		disabled,
+		onSaveFlushed,
+		onSavePending,
+		onUpdate,
+		simulated,
+		states,
+		story
+	} = props;
+	const {t} = useTranslation();
+	const listStates = states.filter(state => state.type === 'list');
+
+	return (
+		<div className="visual-passage-loop">
+			<label>
+				<span>{t('dialogs.passageEdit.visual.loopState')}</span>
+				<select
+					aria-label={t('dialogs.passageEdit.visual.loopState')}
+					disabled={disabled || listStates.length === 0}
+					onChange={event => onUpdate({stateId: event.target.value})}
+					value={block.stateId}
+				>
+					<option value="">
+						{t('dialogs.passageEdit.visual.chooseState')}
+					</option>
+					{listStates.map(item => (
+						<option key={item.id} value={item.id}>{item.name}</option>
+					))}
+				</select>
+			</label>
+			{listStates.length === 0 && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.loopListHint')}
+				</p>
+			)}
+			{block.stateId === '' && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.blockIncomplete')}
+				</p>
+			)}
+			<div
+				aria-label={t('dialogs.passageEdit.visual.loopBody')}
+				className="loop-body"
+			>
+				<span>{t('dialogs.passageEdit.visual.loopBody')}</span>
+				<BlockList
+					blocks={block.blocks}
+					depth={depth + 1}
+					disabled={disabled}
+					onChange={blocks => onUpdate({blocks})}
+					onSaveFlushed={onSaveFlushed}
+					onSavePending={onSavePending}
+					simulated={simulated}
+					states={states}
+					story={story}
+				/>
+			</div>
+			<div>
+				<span>{t('dialogs.passageEdit.visual.condition')}</span>
+				<ConditionEditor
+					condition={block.condition}
+					onChange={condition => onUpdate({condition})}
+					states={states}
+				/>
+			</div>
+		</div>
+	);
+};
+
 interface BlockShellProps {
 	canMoveDown: boolean;
 	canMoveUp: boolean;
@@ -1222,7 +1579,14 @@ const BlockList: React.FC<BlockListProps> = props => {
 	}
 
 	function addVariableBlock() {
-		onChange([...blocks, {id: uuid(), kind: 'variable', stateId: ''}]);
+		onChange([
+			...blocks,
+			{id: uuid(), kind: 'variable', source: 'state', stateId: ''}
+		]);
+	}
+
+	function addRawBlock() {
+		onChange([...blocks, {id: uuid(), kind: 'raw', sugar: ''}]);
 	}
 
 	function addIncludeBlock() {
@@ -1242,6 +1606,26 @@ const BlockList: React.FC<BlockListProps> = props => {
 				label: '',
 				operation: 'reveal'
 			}
+		]);
+	}
+
+	function addSwitchBlock() {
+		onChange([
+			...blocks,
+			{
+				cases: [],
+				defaultBlocks: [],
+				id: uuid(),
+				kind: 'switch',
+				stateId: ''
+			}
+		]);
+	}
+
+	function addLoopBlock() {
+		onChange([
+			...blocks,
+			{blocks: [], id: uuid(), kind: 'loop', stateId: ''}
 		]);
 	}
 
@@ -1322,6 +1706,16 @@ const BlockList: React.FC<BlockListProps> = props => {
 								states={states}
 							/>
 						)}
+						{block.kind === 'raw' && (
+							<RawBlockEditor
+								block={block}
+								disabled={disabled}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+							/>
+						)}
 						{block.kind === 'include' && (
 							<IncludeEditor
 								block={block}
@@ -1341,6 +1735,36 @@ const BlockList: React.FC<BlockListProps> = props => {
 									updateBlock(block.id, {...block, ...props})
 								}
 								states={states}
+							/>
+						)}
+						{block.kind === 'switch' && (
+							<SwitchBlockEditor
+								block={block}
+								depth={depth}
+								disabled={disabled}
+								onSaveFlushed={onSaveFlushed}
+								onSavePending={onSavePending}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								simulated={simulated}
+								states={states}
+								story={story}
+							/>
+						)}
+						{block.kind === 'loop' && (
+							<LoopBlockEditor
+								block={block}
+								depth={depth}
+								disabled={disabled}
+								onSaveFlushed={onSaveFlushed}
+								onSavePending={onSavePending}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								simulated={simulated}
+								states={states}
+								story={story}
 							/>
 						)}
 					</BlockShell>
@@ -1378,6 +1802,13 @@ const BlockList: React.FC<BlockListProps> = props => {
 				<IconButton
 					disabled={disabled}
 					icon={<IconPlus />}
+					label={t('dialogs.passageEdit.visual.addRawBlock')}
+					onClick={addRawBlock}
+					variant="create"
+				/>
+				<IconButton
+					disabled={disabled}
+					icon={<IconPlus />}
 					label={t('dialogs.passageEdit.visual.addIncludeBlock')}
 					onClick={addIncludeBlock}
 					variant="create"
@@ -1387,6 +1818,20 @@ const BlockList: React.FC<BlockListProps> = props => {
 					icon={<IconPlus />}
 					label={t('dialogs.passageEdit.visual.addInteractionBlock')}
 					onClick={addInteractionBlock}
+					variant="create"
+				/>
+				<IconButton
+					disabled={disabled}
+					icon={<IconPlus />}
+					label={t('dialogs.passageEdit.visual.addSwitchBlock')}
+					onClick={addSwitchBlock}
+					variant="create"
+				/>
+				<IconButton
+					disabled={disabled}
+					icon={<IconPlus />}
+					label={t('dialogs.passageEdit.visual.addLoopBlock')}
+					onClick={addLoopBlock}
 					variant="create"
 				/>
 			</div>

@@ -1,5 +1,6 @@
 import {fakePassage, fakeStory} from '../../test-util';
 import {
+	VisualBlock,
 	VisualPassageContentV1,
 	VisualPassageContentV2
 } from '../../store/stories';
@@ -206,6 +207,137 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe('');
+	});
+
+	it('emits raw block sugar verbatim and skips empty raw blocks', () => {
+		const story = fakeStory(1);
+
+		story.visual = {states: [], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{id: 'text-1', kind: 'text', text: 'Hello.'},
+						// Leading/trailing whitespace survives: no trimming.
+						{id: 'raw-1', kind: 'raw', sugar: '  <<set $x = 1>>  '},
+						// Whitespace-only raw blocks are skipped.
+						{id: 'raw-2', kind: 'raw', sugar: '   '},
+						{id: 'raw-3', kind: 'raw', sugar: ''},
+						{id: 'text-2', kind: 'text', text: 'Bye.'}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('Hello.\n\n  <<set $x = 1>>  \n\nBye.');
+	});
+
+	it('wraps raw block sugar in its condition', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							condition: {
+								operator: 'greaterThan',
+								stateId: state.id,
+								value: 5
+							},
+							id: 'raw-1',
+							kind: 'raw',
+							sugar: '<<print $coins>>'
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('<<if $nrp_trust gt 5>><<print $coins>><</if>>');
+	});
+
+	it('compiles loop item variable blocks and keeps state blocks unchanged', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						// A loop item block has no state id and prints _item.
+						{
+							id: 'var-1',
+							kind: 'variable',
+							source: 'loopItem',
+							stateId: undefined
+						},
+						// The state source keeps printing the state variable.
+						{id: 'var-2', kind: 'variable', stateId: state.id}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('<<print _item>>\n\n<<print $nrp_trust>>');
+	});
+
+	it('wraps loop item variable blocks in their conditions', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							condition: {
+								operator: 'greaterThan',
+								stateId: state.id,
+								value: 1
+							},
+							id: 'var-1',
+							kind: 'variable',
+							source: 'loopItem',
+							stateId: undefined
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('<<if $nrp_trust gt 1>><<print _item>><</if>>');
 	});
 
 	it('wraps variable and include blocks in their conditions', () => {
@@ -625,5 +757,268 @@ describe('visual passage utilities', () => {
 		};
 
 		expect(migrateVisualContent(v2)).toBe(v2);
+	});
+
+	it('compiles switch blocks with string, boolean, and number cases plus a default', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: 0,
+			id: 'mood',
+			name: 'Mood',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							cases: [
+								{
+									blocks: [{id: 'text-1', kind: 'text', text: 'Happy.'}],
+									id: 'case-1',
+									value: 1
+								},
+								{
+									blocks: [{id: 'text-2', kind: 'text', text: 'Red.'}],
+									id: 'case-2',
+									value: 'red'
+								},
+								{
+									blocks: [{id: 'text-3', kind: 'text', text: 'Yes.'}],
+									id: 'case-3',
+									value: true
+								}
+							],
+							defaultBlocks: [
+								{id: 'text-4', kind: 'text', text: 'Unknown.'}
+							],
+							id: 'switch-1',
+							kind: 'switch',
+							stateId: state.id
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe(
+			'<<switch $nrp_mood>><<case 1>>Happy.<</case>><<case "red">>Red.<</case>><<case true>>Yes.<</case>><<default>>Unknown.<</default>><</switch>>'
+		);
+	});
+
+	it('wraps switch blocks in their conditions and compiles nested blocks', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: 0,
+			id: 'mood',
+			name: 'Mood',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Next';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							cases: [
+								{
+									blocks: [
+										{
+											actions: [],
+											id: 'choice-1',
+											kind: 'choice',
+											label: 'Leave',
+											targetPassageId: story.passages[1].id
+										}
+									],
+									id: 'case-1',
+									value: 1
+								}
+							],
+							condition: {
+								operator: 'equals',
+								stateId: state.id,
+								value: 1
+							},
+							defaultBlocks: [],
+							id: 'switch-1',
+							kind: 'switch',
+							stateId: state.id
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe(
+			'<<if $nrp_mood is 1>><<switch $nrp_mood>><<case 1>>[[Leave->Next]]<</case>><</switch>><</if>>'
+		);
+	});
+
+	it('skips switch blocks with a missing state or no cases and no default', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: 0,
+			id: 'mood',
+			name: 'Mood',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							cases: [{blocks: [], id: 'case-1', value: 1}],
+							defaultBlocks: [{id: 'text-1', kind: 'text', text: 'D.'}],
+							id: 'switch-1',
+							kind: 'switch',
+							stateId: 'gone'
+						},
+						{
+							cases: [],
+							defaultBlocks: [],
+							id: 'switch-2',
+							kind: 'switch',
+							stateId: state.id
+						},
+						{
+							cases: [],
+							defaultBlocks: [],
+							id: 'switch-3',
+							kind: 'switch',
+							stateId: ''
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('');
+	});
+
+	it('compiles loop blocks over list states with a nested body', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: ['a', 'b'],
+			id: 'inv',
+			name: 'Inventory',
+			type: 'list' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							blocks: [
+								{id: 'text-1', kind: 'text', text: 'Item: '},
+								{
+									id: 'var-1',
+									kind: 'variable',
+									source: 'loopItem',
+									stateId: undefined
+								}
+							],
+							id: 'loop-1',
+							kind: 'loop',
+							stateId: state.id
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('<<for _item range $nrp_inv>>Item:\n<<print _item>><</for>>');
+	});
+
+	it('wraps loop blocks in their conditions', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: ['a'],
+			id: 'inv',
+			name: 'Inventory',
+			type: 'list' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							blocks: [{id: 'text-1', kind: 'text', text: 'Item.'}],
+							condition: {
+								operator: 'includes',
+								stateId: state.id,
+								value: 'a'
+							},
+							id: 'loop-1',
+							kind: 'loop',
+							stateId: state.id
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe(
+			'<<if $nrp_inv.includes("a")>><<for _item range $nrp_inv>>Item.<</for>><</if>>'
+		);
+	});
+
+	it('skips loop blocks with a missing state or a non-list state', () => {
+		const story = fakeStory(1);
+		const numberState = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [numberState], version: 1};
+		story.passages[0].name = 'Start';
+		const body: VisualBlock[] = [{id: 'text-1', kind: 'text', text: 'Item.'}];
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{blocks: body, id: 'loop-1', kind: 'loop', stateId: 'gone'},
+						{
+							blocks: body,
+							id: 'loop-2',
+							kind: 'loop',
+							stateId: numberState.id
+						},
+						{blocks: body, id: 'loop-3', kind: 'loop', stateId: ''}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('');
 	});
 });

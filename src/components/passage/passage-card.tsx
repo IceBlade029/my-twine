@@ -37,6 +37,8 @@ function visualPassageExcerpt(visual: VisualPassageContent): string {
 
 	function firstText(blocks: VisualBlock[]): string {
 		for (const block of blocks) {
+			// Raw blocks hold SugarCube source, not passage summary text: they
+			// are skipped like every other non-text block.
 			if (block.kind === 'text' && block.text !== '') {
 				return block.text;
 			}
@@ -48,6 +50,32 @@ function visualPassageExcerpt(visual: VisualPassageContent): string {
 					if (found !== '') {
 						return found;
 					}
+				}
+			}
+
+			// Switch and loop blocks contain nested block lists: walk them in
+			// block order like branches so their text can be excerpted.
+			if (block.kind === 'switch') {
+				for (const caseItem of block.cases) {
+					const found = firstText(caseItem.blocks);
+
+					if (found !== '') {
+						return found;
+					}
+				}
+
+				const found = firstText(block.defaultBlocks);
+
+				if (found !== '') {
+					return found;
+				}
+			}
+
+			if (block.kind === 'loop') {
+				const found = firstText(block.blocks);
+
+				if (found !== '') {
+					return found;
 				}
 			}
 		}

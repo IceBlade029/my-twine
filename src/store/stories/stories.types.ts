@@ -91,8 +91,11 @@ export type VisualBlock =
 	| VisualChoiceBlock
 	| VisualInteractionBlock
 	| VisualVariableBlock
+	| VisualRawBlock
 	| VisualIncludeBlock
-	| VisualBranchBlock;
+	| VisualBranchBlock
+	| VisualSwitchBlock
+	| VisualLoopBlock;
 
 export interface VisualTextBlock {
 	kind: 'text';
@@ -130,8 +133,26 @@ export interface VisualInteractionBlock {
 export interface VisualVariableBlock {
 	kind: 'variable';
 	id: string;
+	/**
+	 * What the block prints: a story state value ('state', the default) or the
+	 * current loop item ('loopItem', to be used inside a loop block). A
+	 * loopItem block has no state, so stateId is undefined for it.
+	 */
+	source?: 'state' | 'loopItem';
 	/** Story state whose value is printed. An empty value means the block is incomplete. */
-	stateId: string;
+	stateId: string | undefined;
+	condition?: VisualCondition;
+}
+
+/**
+ * A verbatim SugarCube escape hatch: the sugar is emitted as-is (the
+ * expression-boundary escape for anything the visual model cannot express).
+ */
+export interface VisualRawBlock {
+	kind: 'raw';
+	id: string;
+	/** Raw SugarCube source. An empty value means the block is incomplete. */
+	sugar: string;
 	condition?: VisualCondition;
 }
 
@@ -153,6 +174,41 @@ export interface VisualBranch {
 	id: string;
 	condition?: VisualCondition; // undefined means the 'else' branch: must be last and unique
 	blocks: VisualBlock[];
+}
+
+/**
+ * A multi-way branch on a state value: the first case whose value equals the
+ * state's current value runs; when no case matches, defaultBlocks run.
+ */
+export interface VisualSwitchBlock {
+	kind: 'switch';
+	id: string;
+	/** Story state switched on. An empty value means the block is incomplete. */
+	stateId: string;
+	cases: VisualSwitchCase[];
+	/** Blocks run when no case value matches. */
+	defaultBlocks: VisualBlock[];
+	condition?: VisualCondition;
+}
+
+export interface VisualSwitchCase {
+	id: string;
+	/** The value the state must equal for this case to run. */
+	value: boolean | number | string;
+	blocks: VisualBlock[];
+}
+
+/**
+ * Iterates a list state, rendering the nested body once per item with `_item`
+ * bound to the current item.
+ */
+export interface VisualLoopBlock {
+	kind: 'loop';
+	id: string;
+	/** List state iterated over. An empty value means the block is incomplete. */
+	stateId: string;
+	blocks: VisualBlock[];
+	condition?: VisualCondition;
 }
 
 export type VisualStateType = 'boolean' | 'number' | 'text' | 'list';

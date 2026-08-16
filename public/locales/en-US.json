@@ -196,6 +196,7 @@
 		},
 		"passageEdit": {
 			"editorCrashed": "Something went wrong with this editor. Try closing it and editing this passage again.",
+			"specialPassageNote": "Special passage: {{label}} — {{description}}",
 			"passageTextEditorLabel": "Passage Text",
 			"passageTextPlaceholder": "Enter the body text of your passage here. To link to another passage, put two square brackets around its name, [[like this]].",
 			"setAsStart": "Start Story Here",
@@ -295,6 +296,7 @@
 				"states": "Story states",
 				"stateName": "State name",
 				"stateType": "State type",
+				"storyInitPreview": "Auto-generated state initialization (runs once at story start)",
 				"switchCase": "Case",
 				"switchCaseValue": "Case value",
 				"switchDefault": "Default",
@@ -445,6 +447,7 @@
 				"findAndReplace": "Find and Replace",
 				"goTo": "Go To",
 				"javaScript": "JavaScript",
+				"newSpecialPassage": "New special passage: {{label}}",
 				"passageTags": "Passage Tags",
 				"snapToGrid": "Snap to Grid",
 				"startStoryHere": "Start Story Here",
@@ -548,6 +551,44 @@
 		},
 		"storyFormatDefaults": {
 			"name": "Untitled Story Format"
+		}
+	},
+	"specialPassages": {
+		"StoryTitle": {
+			"label": "Title",
+			"description": "Shown as the story title."
+		},
+		"StoryAuthor": {
+			"label": "Author",
+			"description": "Shown as the story author."
+		},
+		"StorySubtitle": {
+			"label": "Subtitle",
+			"description": "Shown as the story subtitle."
+		},
+		"StoryInit": {
+			"label": "Init",
+			"description": "Runs once when the game starts (initialization)."
+		},
+		"StoryCaption": {
+			"label": "Sidebar",
+			"description": "Persistent sidebar content (HUD)."
+		},
+		"StoryMenu": {
+			"label": "Menu",
+			"description": "Content of the top menu."
+		},
+		"PassageHeader": {
+			"label": "Passage top",
+			"description": "Shown at the top of every passage."
+		},
+		"PassageFooter": {
+			"label": "Passage bottom",
+			"description": "Shown at the bottom of every passage."
+		},
+		"PassageDone": {
+			"label": "After passage",
+			"description": "Runs after each passage renders."
 		}
 	},
 	"undoChange": {

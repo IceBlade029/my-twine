@@ -28,6 +28,23 @@ function sugarCubeValue(value: boolean | number | string | string[]) {
 	return JSON.stringify(value);
 }
 
+/**
+ * Compiles the `<<if ndef>>…<</if>>` guard block that initializes each story
+ * state to its default once at start of play. Each state becomes a guarded set
+ * so existing saved games are never overwritten. Returns an empty string when
+ * there are no states.
+ */
+export function compileStateInitialization(states: VisualStoryState[]): string {
+	return states
+		.map(
+			state =>
+				`<<if ndef ${visualStateVariable(state.id)}>><<set ${visualStateVariable(
+					state.id
+				)} = ${sugarCubeValue(state.defaultValue)}>><</if>>`
+		)
+		.join('\n');
+}
+
 function compileCondition(condition: VisualCondition, states: VisualStoryState[]) {
 	const state = states.find(item => item.id === condition.stateId);
 
@@ -382,10 +399,14 @@ function compileBlocks(
  * visual editor.
  *
  * State initialization is emitted only when `passageId` is the id of the
- * passage that owns initialization (the start passage if it is visual,
- * otherwise the first visual passage). The caller passes the passage id
- * explicitly so that the init block survives edits even when `content` is a
- * freshly created object rather than the passage's stored reference.
+ * passage that owns initialization. That owner prefers a real passage named
+ * "StoryInit" (which SugarCube runs automatically once at story start); when
+ * no StoryInit exists, it falls back to the start passage if it is visual,
+ * otherwise the first visual passage, so older stories keep working until
+ * their states are next edited (which auto-creates StoryInit). The caller
+ * passes the passage id explicitly so that the init block survives edits even
+ * when `content` is a freshly created object rather than the passage's stored
+ * reference.
  */
 export function compileVisualPassage(
 	content: VisualPassageContent,
@@ -394,23 +415,20 @@ export function compileVisualPassage(
 ) {
 	const contentV2 = migrateVisualContent(content);
 	const states = story.visual?.states ?? [];
-	const initializationOwner =
+	const initPassage =
+		story.passages.find(passage => passage.name === 'StoryInit') ??
 		story.passages.find(
 			passage => passage.id === story.startPassage && passage.visual
-		) ?? story.passages.find(passage => passage.visual);
+		) ??
+		story.passages.find(passage => passage.visual);
 	const initialization =
-		passageId && passageId === initializationOwner?.id
-			? states.map(
-					state =>
-						`<<if ndef ${visualStateVariable(state.id)}>><<set ${visualStateVariable(
-							state.id
-						)} = ${sugarCubeValue(state.defaultValue)}>><</if>>`
-			  )
-			: [];
+		passageId && passageId === initPassage?.id
+			? compileStateInitialization(states)
+			: '';
 	const result: string[] = [];
 
-	if (initialization.length > 0) {
-		result.push(initialization.join('\n'));
+	if (initialization) {
+		result.push(initialization);
 	}
 
 	result.push(...compileBlocks(contentV2.blocks, states, story, passageId));

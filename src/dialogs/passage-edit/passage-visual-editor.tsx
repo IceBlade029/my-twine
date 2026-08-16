@@ -43,6 +43,7 @@ import {
 } from '../../store/stories';
 import {useUndoableStoriesContext} from '../../store/undoable-stories';
 import {
+	compileStateInitialization,
 	compileVisualPassage,
 	migrateVisualContent
 } from '../../util/visual-passage';
@@ -1932,6 +1933,14 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 						: t('dialogs.passageEdit.visual.saved')}
 				</span>
 			</div>
+			{passage.name === 'StoryInit' && states.length > 0 && (
+				<section className="story-init-preview">
+					<div className="section-heading">
+						<h4>{t('dialogs.passageEdit.visual.storyInitPreview')}</h4>
+					</div>
+					<pre>{compileStateInitialization(states)}</pre>
+				</section>
+			)}
 			<section className="visual-passage-blocks">
 				<div className="section-heading">
 					<h3>Blocks</h3>

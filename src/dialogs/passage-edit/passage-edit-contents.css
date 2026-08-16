@@ -14,3 +14,11 @@
 	box-shadow: inset 0 0 0px 2px var(--blue);
 	outline: none;
 }
+
+.passage-edit-special-note {
+	background: var(--light-blue);
+	border-bottom: 1px solid var(--blue);
+	color: var(--black);
+	font-size: 95%;
+	padding: calc(var(--grid-size) / 2) var(--grid-size);
+}

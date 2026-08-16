@@ -15,6 +15,7 @@ import './passage-edit-contents.css';
 import {usePrefsContext} from '../../store/prefs';
 import {passageUsesVisualEditor} from '../../util/visual-passage';
 import {PassageVisualEditor} from './passage-visual-editor';
+import {specialPassageMeta} from '../../util/special-passages';
 
 export interface PassageEditContentsProps {
 	disabled?: boolean;
@@ -42,6 +43,15 @@ export const PassageEditContents: React.FC<
 		story.storyFormatVersion
 	);
 	const {t} = useTranslation();
+	const specialMeta = specialPassageMeta(passage.name);
+	const specialNote = specialMeta ? (
+		<div className="passage-edit-special-note">
+			{t('dialogs.passageEdit.specialPassageNote', {
+				description: t(specialMeta.descriptionKey),
+				label: t(specialMeta.labelKey)
+			})}
+		</div>
+	) : null;
 
 	React.useEffect(() => {
 		if (error) {
@@ -94,6 +104,7 @@ export const PassageEditContents: React.FC<
 	if (passageUsesVisualEditor(passage)) {
 		return (
 			<div className="passage-edit-contents" aria-hidden={disabled}>
+				{specialNote}
 				<PassageToolbar
 					disabled={disabled}
 					passage={passage}
@@ -111,6 +122,7 @@ export const PassageEditContents: React.FC<
 
 	return (
 		<div className="passage-edit-contents" aria-hidden={disabled}>
+			{specialNote}
 			<PassageToolbar
 				disabled={disabled}
 				editor={cmEditor}

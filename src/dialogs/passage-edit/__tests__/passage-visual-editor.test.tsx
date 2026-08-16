@@ -577,6 +577,47 @@ describe('<PassageVisualEditor>', () => {
 		expect(gates[0].querySelector('svg')).toBeInTheDocument();
 		expect(gates[1].querySelector('svg')).toBeInTheDocument();
 	});
+
+	it('shows a read-only initialization preview when editing the StoryInit passage with states', () => {
+		const {container} = renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+			story.passages[0].name = 'StoryInit';
+		});
+
+		// The preview section renders a translated label.
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.storyInitPreview')
+		).toBeInTheDocument();
+		// And a read-only <pre> showing the generated initialization.
+		const preview = container.querySelector('.story-init-preview pre');
+
+		expect(preview).not.toBeNull();
+		expect(preview?.textContent).toContain(
+			'<<if ndef $nrp_state_1>><<set $nrp_state_1 = 0>><</if>>'
+		);
+	});
+
+	it('does not render the StoryInit preview for other passage names', () => {
+		const {container} = renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+			// passages[0] keeps its default name, not "StoryInit".
+		});
+
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.storyInitPreview')
+		).not.toBeInTheDocument();
+		expect(container.querySelector('.story-init-preview')).toBeNull();
+	});
 });
 
 describe('human-readable conditions and actions', () => {

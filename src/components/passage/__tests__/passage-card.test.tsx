@@ -59,6 +59,34 @@ describe('<PassageCard>', () => {
 		expect(screen.getByText(passage.name)).toBeInTheDocument();
 	});
 
+	it('displays a special-passage badge for a special passage name', () => {
+		const passage = fakePassage({name: 'StoryInit'});
+
+		renderComponent({passage});
+		expect(
+			document.querySelector('.special-passage-badge')
+		).toHaveTextContent('specialPassages.StoryInit.label');
+		expect(screen.getByText('StoryInit')).toBeInTheDocument();
+	});
+
+	it("doesn't display a special-passage badge for a normal passage name", () => {
+		const passage = fakePassage({name: 'A regular passage'});
+
+		renderComponent({passage});
+		expect(
+			document.querySelector('.special-passage-badge')
+		).not.toBeInTheDocument();
+	});
+
+	it("doesn't display a special-passage badge for a case-mismatched passage name", () => {
+		const passage = fakePassage({name: 'storyinit'});
+
+		renderComponent({passage});
+		expect(
+			document.querySelector('.special-passage-badge')
+		).not.toBeInTheDocument();
+	});
+
 	it('displays an excerpt of the passage text', () => {
 		const passage = fakePassage({text: "short text that won't be truncated"});
 

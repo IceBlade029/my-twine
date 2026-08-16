@@ -180,6 +180,7 @@
 		},
 		"passageEdit": {
 			"editorCrashed": "编辑器遇到了一些错误。尝试关闭它并重新编辑这个片段。",
+			"specialPassageNote": "特殊段落：{{label}} —— {{description}}",
 			"passageTextEditorLabel": "片段文本",
 			"passageTextPlaceholder": "在这里输入您的片段的文本。要链接到其他片段需要在它名字前后加两个方括号，[[就像这样]]。",
 			"setAsStart": "从这里开始故事",
@@ -279,6 +280,7 @@
 				"states": "故事状态",
 				"stateName": "状态名称",
 				"stateType": "状态类型",
+				"storyInitPreview": "自动生成的状态初始化（游戏开始时运行一次）",
 				"switchCase": "分支",
 				"switchCaseValue": "分支值",
 				"switchDefault": "默认",
@@ -407,6 +409,7 @@
 				"findAndReplace": "查找替换",
 				"goTo": "跳转到",
 				"javaScript": "JavaScript",
+				"newSpecialPassage": "新建特殊段落：{{label}}",
 				"passageTags": "片段标签",
 				"snapToGrid": "对齐到网格",
 				"startStoryHere": "从这里开始故事",
@@ -509,6 +512,44 @@
 		},
 		"storyFormatDefaults": {
 			"name": "未命名故事的格式"
+		}
+	},
+	"specialPassages": {
+		"StoryTitle": {
+			"label": "标题",
+			"description": "作为故事标题显示。"
+		},
+		"StoryAuthor": {
+			"label": "作者",
+			"description": "作为故事作者显示。"
+		},
+		"StorySubtitle": {
+			"label": "副标题",
+			"description": "作为故事副标题显示。"
+		},
+		"StoryInit": {
+			"label": "初始",
+			"description": "游戏开始时运行一次（初始化）。"
+		},
+		"StoryCaption": {
+			"label": "边栏",
+			"description": "侧边栏常驻内容（HUD）。"
+		},
+		"StoryMenu": {
+			"label": "菜单",
+			"description": "顶部菜单内容。"
+		},
+		"PassageHeader": {
+			"label": "段首",
+			"description": "显示在每个段落开头。"
+		},
+		"PassageFooter": {
+			"label": "段尾",
+			"description": "显示在每个段落结尾。"
+		},
+		"PassageDone": {
+			"label": "段后",
+			"description": "每个段落渲染后运行。"
 		}
 	},
 	"undoChange": {

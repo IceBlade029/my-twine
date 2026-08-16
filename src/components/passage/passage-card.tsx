@@ -8,6 +8,7 @@ import {SelectableCard} from '../container/card/selectable-card';
 import {Passage, TagColors, VisualBlock, VisualPassageContent} from '../../store/stories';
 import {TagStripe} from '../tag/tag-stripe';
 import {passageIsEmpty} from '../../util/passage-is-empty';
+import {specialPassageMeta} from '../../util/special-passages';
 import {migrateVisualContent} from '../../util/visual-passage';
 import './passage-card.css';
 import { TagBadges } from '../tag/tag-badges';
@@ -137,6 +138,10 @@ export const PassageCard: React.FC<PassageCardProps> = React.memo(props => {
 		}),
 		[passage.height, passage.left, passage.top, passage.width]
 	);
+	const specialMeta = React.useMemo(
+		() => specialPassageMeta(passage.name),
+		[passage.name]
+	);
 	const handleMouseDown = React.useCallback(
 		(event: MouseEvent) => {
 			// Shift- or control-clicking toggles our selected status, but doesn't
@@ -184,7 +189,14 @@ export const PassageCard: React.FC<PassageCardProps> = React.memo(props => {
 					selected={passage.selected}
 				>
 					{tagDisplay === 'color' && <TagStripe tagColors={tagColors} tags={passage.tags} />}
-					<h2>{passage.name}</h2>
+					<h2>
+						{specialMeta && (
+							<span className="special-passage-badge">
+								{t(specialMeta.labelKey)}
+							</span>
+						)}
+						{passage.name}
+					</h2>
 					<CardContent>{excerpt}</CardContent>
 					{tagDisplay === 'name' && <TagBadges tagColors={tagColors} tags={passage.tags} />}
 				</SelectableCard>

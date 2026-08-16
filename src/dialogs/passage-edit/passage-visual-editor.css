@@ -214,3 +214,11 @@
 	padding: var(--grid-size);
 	white-space: pre-wrap;
 }
+
+.story-init-preview pre {
+	background: var(--dark-gray);
+	color: var(--off-white);
+	overflow: auto;
+	padding: var(--grid-size);
+	white-space: pre-wrap;
+}

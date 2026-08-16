@@ -16,6 +16,20 @@ const TestManager = () => {
 	);
 };
 
+/** The DOM node of the StoryInit passage, if one exists. */
+function storyInitNode() {
+	return document.querySelector(
+		'[data-testid^="passage-"][data-name="StoryInit"]'
+	);
+}
+
+/** Number of passages in the story named StoryInit. */
+function storyInitCount() {
+	return document.querySelectorAll(
+		'[data-testid^="passage-"][data-name="StoryInit"]'
+	).length;
+}
+
 describe('<StoryStatesManager>', () => {
 	function renderComponent(setup?: (story: Story) => void) {
 		const story = fakeStory(2);
@@ -34,7 +48,7 @@ describe('<StoryStatesManager>', () => {
 		return story;
 	}
 
-	it('adds a typed story state and recompiles the start passage source', () => {
+	it('adds a typed story state and compiles its initialization into StoryInit', () => {
 		const story = renderComponent();
 
 		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addState'));
@@ -51,13 +65,16 @@ describe('<StoryStatesManager>', () => {
 			{target: {value: '2'}}
 		);
 
-		// The start passage is recompiled with a state initialization macro.
+		// A StoryInit passage is auto-created to own the initialization, which
+		// SugarCube runs once at story start.
+		expect(storyInitCount()).toBe(1);
+		expect(storyInitNode()).toHaveTextContent(/<<if ndef \$nrp_/);
+		expect(storyInitNode()).toHaveTextContent('= 2');
+
+		// The start passage no longer owns the init block.
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent(/<<if ndef \$nrp_/);
-		expect(
-			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent('= 2');
+		).not.toHaveTextContent(/<<if ndef \$nrp_/);
 	});
 
 	it('strips conditions referencing a deleted state when recompiling', () => {
@@ -370,7 +387,7 @@ describe('<StoryStatesManager>', () => {
 	});
 
 	it('defaults a new list state to an empty list', () => {
-		const story = renderComponent();
+		renderComponent();
 
 		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addState'));
 		fireEvent.change(
@@ -378,14 +395,12 @@ describe('<StoryStatesManager>', () => {
 			{target: {value: 'list'}}
 		);
 
-		// The start passage recompiles with an empty-list initialization.
-		expect(
-			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent('= []');
+		// The StoryInit passage recompiles with an empty-list initialization.
+		expect(storyInitNode()).toHaveTextContent('= []');
 	});
 
 	it('edits the items of a list state default value', () => {
-		const story = renderComponent(story => {
+		renderComponent(story => {
 			story.visual = {
 				states: [
 					{
@@ -411,18 +426,57 @@ describe('<StoryStatesManager>', () => {
 			{target: {value: 'torch'}}
 		);
 
-		// The recompiled default now contains both items.
-		expect(
-			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent('["key","torch"]');
+		// The recompiled StoryInit default now contains both items.
+		expect(storyInitNode()).toHaveTextContent('["key","torch"]');
 
 		// Removing the first item updates the default as well.
 		fireEvent.click(
 			screen.getAllByLabelText('dialogs.passageEdit.visual.removeListItem')[0]
 		);
+		expect(storyInitNode()).toHaveTextContent('["torch"]');
+	});
+
+	it('does not create a second StoryInit and preserves an existing one', () => {
+		renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+			// A StoryInit passage already exists with author content.
+			story.passages[0].visual = undefined;
+			story.passages.push({
+				...story.passages[0],
+				height: 100,
+				id: 'story-init-id',
+				left: 0,
+				name: 'StoryInit',
+				selected: false,
+				story: story.id,
+				text: 'Author note.',
+				top: 0,
+				width: 100
+			});
+		});
+
+		// Editing a state must not add a second StoryInit passage.
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.defaultValue'),
+			{target: {value: '5'}}
+		);
+
+		expect(storyInitCount()).toBe(1);
+		// The author's content is preserved, not overwritten by an empty visual
+		// passage being placed over it.
 		expect(
-			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent('["torch"]');
+			screen.getByTestId('passage-story-init-id')
+		).toHaveTextContent('Author note.');
 	});
 
 	it('drops type-incompatible actions and conditions when a state type changes', () => {

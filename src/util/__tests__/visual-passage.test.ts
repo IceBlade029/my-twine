@@ -5,6 +5,7 @@ import {
 	VisualPassageContentV2
 } from '../../store/stories';
 import {
+	compileStateInitialization,
 	compileVisualPassage,
 	emptyVisualPassage,
 	migrateVisualContent,
@@ -701,6 +702,93 @@ describe('visual passage utilities', () => {
 		expect(
 			compileVisualPassage(fresh, story, story.passages[1].id)
 		).not.toContain('<<if ndef $nrp_trust>>');
+	});
+
+	it('compiles state initialization into a StoryInit passage when one exists', () => {
+		const story = fakeStory(3);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		// The start passage (passages[0]) is visual, but a real StoryInit
+		// passage exists: it must win ownership of the init block.
+		story.passages[0].visual = emptyVisualPassage();
+		story.passages[1].visual = emptyVisualPassage();
+		story.passages[1].name = 'StoryInit';
+		story.passages[2].name = 'Other';
+
+		expect(
+			compileVisualPassage(emptyVisualPassage(), story, story.passages[1].id)
+		).toContain('<<if ndef $nrp_trust>>');
+
+		// The start passage no longer owns initialization when StoryInit exists.
+		expect(
+			compileVisualPassage(emptyVisualPassage(), story, story.passages[0].id)
+		).not.toContain('<<if ndef $nrp_trust>>');
+	});
+
+	it('falls back to the start passage when it is visual and no StoryInit exists', () => {
+		const story = fakeStory(3);
+		const state = {
+			defaultValue: false,
+			id: 'flag',
+			name: 'Flag',
+			type: 'boolean' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].visual = emptyVisualPassage();
+		story.passages[1].visual = emptyVisualPassage();
+
+		// No StoryInit: the start passage (passages[0], visual) owns the init.
+		expect(
+			compileVisualPassage(emptyVisualPassage(), story, story.passages[0].id)
+		).toContain('<<if ndef $nrp_flag>>');
+		expect(
+			compileVisualPassage(emptyVisualPassage(), story, story.passages[1].id)
+		).not.toContain('<<if ndef $nrp_flag>>');
+	});
+
+	it('falls back to the first visual passage when no StoryInit exists and the start passage is not visual', () => {
+		const story = fakeStory(3);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		// passages[0] is the start passage but has no visual content.
+		story.passages[0].visual = undefined;
+		story.passages[1].visual = emptyVisualPassage();
+		story.passages[2].visual = emptyVisualPassage();
+
+		// The first visual passage owns initialization.
+		expect(
+			compileVisualPassage(emptyVisualPassage(), story, story.passages[1].id)
+		).toContain('<<if ndef $nrp_trust>>');
+		expect(
+			compileVisualPassage(emptyVisualPassage(), story, story.passages[2].id)
+		).not.toContain('<<if ndef $nrp_trust>>');
+	});
+
+	it('compiles state initialization into a block and an empty string for no states', () => {
+		const state = {
+			defaultValue: ['key'],
+			id: 'inv',
+			name: 'Inventory',
+			type: 'list' as const
+		};
+
+		expect(compileStateInitialization([state])).toBe(
+			'<<if ndef $nrp_inv>><<set $nrp_inv = ["key"]>><</if>>'
+		);
+		expect(compileStateInitialization([])).toBe('');
 	});
 
 	it('migrates v1 content to v2 losslessly and is idempotent', () => {

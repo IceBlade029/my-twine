@@ -3,7 +3,9 @@ import {IconPlus} from '@tabler/icons';
 import * as React from 'react';
 import {useTranslation} from 'react-i18next';
 import {IconButton} from '../../components/control/icon-button';
+import {passageDefaults} from '../../store/stories/defaults';
 import {
+	Passage,
 	Story,
 	VisualBlock,
 	VisualCondition,
@@ -14,6 +16,7 @@ import {
 import {useUndoableStoriesContext} from '../../store/undoable-stories';
 import {
 	compileVisualPassage,
+	emptyVisualPassage,
 	migrateVisualContent
 } from '../../util/visual-passage';
 import './story-states-manager.css';
@@ -31,6 +34,36 @@ export function defaultValueForState(
 		return [];
 	}
 	return '';
+}
+
+/**
+ * Finds an unoccupied spot for a new passage. Each candidate begins at
+ * (25, 25) and nudges right by (width + gap) until its rectangle no longer
+ * overlaps any existing passage, so StoryInit never lands on top of content.
+ */
+function findFreePlacement(
+	passages: Array<Pick<Passage, 'height' | 'left' | 'top' | 'width'>>
+) {
+	const width = passageDefaults().width;
+	const gap = width + 30;
+
+	const overlaps = (left: number, top: number) =>
+		passages.some(
+			item =>
+				left < item.left + item.width &&
+				left + width > item.left &&
+				top < item.top + item.height &&
+				top + passageDefaults().height > item.top
+		);
+
+	let left = 25;
+	const top = 25;
+
+	while (overlaps(left, top)) {
+		left += gap;
+	}
+
+	return {left, top};
 }
 
 export function StateValueInput(props: {
@@ -349,7 +382,33 @@ export const StoryStatesManager: React.FC<StoryStatesManagerProps> = props => {
 			...story,
 			visual: {states: nextStates, version: 1}
 		};
-		nextStory.passages = story.passages.map(passage => {
+
+		const existingStoryInit = story.passages.find(
+			passage => passage.name === 'StoryInit'
+		);
+
+		// When states exist but no StoryInit passage does yet, auto-create one
+		// so the generated initialization is owned by a real passage SugarCube
+		// runs once at startup. It is added before passages are recompiled so
+		// every passage sees StoryInit as the initialization owner.
+		if (nextStates.length > 0 && !existingStoryInit) {
+			const placement = findFreePlacement(story.passages);
+			const initPassage = {
+				...passageDefaults(),
+				id: uuid(),
+				left: placement.left,
+				name: 'StoryInit',
+				story: story.id,
+				top: placement.top,
+				visual: emptyVisualPassage()
+			};
+
+			nextStory.passages = [...story.passages, initPassage];
+		} else {
+			nextStory.passages = story.passages;
+		}
+
+		nextStory.passages = nextStory.passages.map(passage => {
 			if (!passage.visual) {
 				return passage;
 			}
@@ -364,6 +423,7 @@ export const StoryStatesManager: React.FC<StoryStatesManagerProps> = props => {
 				visual
 			};
 		});
+
 		dispatch(
 			updateStory(stories, story, {
 				passages: nextStory.passages,

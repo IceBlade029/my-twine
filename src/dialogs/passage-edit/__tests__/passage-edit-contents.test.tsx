@@ -136,6 +136,50 @@ describe('<PassageEditContents>', () => {
 			});
 		});
 
+		describe('when the passage is a special passage', () => {
+			it('displays a special-passage note in source mode', () => {
+				const story = fakeStory(1);
+				story.passages[0].name = 'StoryInit';
+				const format = fakeUnloadedStoryFormat({
+					name: story.storyFormat,
+					version: story.storyFormatVersion
+				});
+
+				renderComponent({stories: [story], storyFormats: [format]});
+				expect(
+					document.querySelector('.passage-edit-special-note')
+				).toHaveTextContent('dialogs.passageEdit.specialPassageNote');
+			});
+
+			it('displays a special-passage note in visual mode', () => {
+				const story = fakeStory(1);
+				story.passages[0].name = 'StoryCaption';
+				story.passages[0].visual = {blocks: [], version: 2};
+				const format = fakeLoadedStoryFormat({
+					name: story.storyFormat,
+					version: story.storyFormatVersion
+				});
+
+				renderComponent({stories: [story], storyFormats: [format]});
+				expect(
+					document.querySelector('.passage-edit-special-note')
+				).toHaveTextContent('dialogs.passageEdit.specialPassageNote');
+			});
+
+			it("doesn't display a special-passage note for a regular passage", () => {
+				const story = fakeStory(1);
+				const format = fakeUnloadedStoryFormat({
+					name: story.storyFormat,
+					version: story.storyFormatVersion
+				});
+
+				renderComponent({stories: [story], storyFormats: [format]});
+				expect(
+					document.querySelector('.passage-edit-special-note')
+				).not.toBeInTheDocument();
+			});
+		});
+
 		describe('the first time an error occurs', () => {
 			it('disables story format extensions in the editor', () => {
 				jest.spyOn(console, 'error').mockReturnValue();

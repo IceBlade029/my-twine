@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：完成阶段 9（状态初始化搬进可见的 StoryInit 段落 + SugarCube 特殊段落识别/徽标/创建菜单），提交 `a9db5bf4`，验收通过（lint/tsc/相关单测 + 视觉验收）。**地基与能力层全部完成，下一步是「树形视觉大修」**。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：完成**首片低代码交互原型**（表达式 AST + 模块选择器 + 默认中文 + 修改变量 + 真 SugarCube 运行时检查），提交 `5ed09202`，15.2 场景验收通过（`trust 5 -> 7`）。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -43,6 +43,7 @@
 | `b03d7c66` | **阶段 7 的功能提交**：`feat: add in-place interaction blocks (reveal/append/remove) and back/return choice targets` |
 | `0ea5e5df` | **阶段 8 的功能提交**：`feat: add raw SugarCube leaf blocks, variable loop-item source, switch and loop container blocks` |
 | `a9db5bf4` | **阶段 9 的功能提交**：`feat: move state init into visible StoryInit passage and recognize SugarCube special passages` |
+| `5ed09202` | **首片低代码交互原型**：`feat: vertical-slice prototype - expression AST, module selector, default Chinese, set-variable, and real SugarCube runtime check drawer` |
 
 ### 约定
 

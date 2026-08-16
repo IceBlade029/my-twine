@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：完成阶段 7（就地交互块 reveal/append/remove + choice 的 back/return 导航），提交 `b03d7c66`，验收通过（lint/tsc/50 单测 + 视觉验收）。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：完成阶段 8（raw 原始宏叶子 + variable loopItem 源 + switch 多路分支 + loop 循环块），提交 `0ea5e5df`，验收通过（lint/tsc/71 单测 + 视觉验收）。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -41,6 +41,7 @@
 | `75c8eae8` | **阶段 6 的功能提交**：`feat: add list state type with list actions/conditions, and variable + include blocks` |
 | `936741b5` | **阶段 6.5 的重构提交**：`refactor: extract unified BlockShell and block-kind metadata registry` |
 | `b03d7c66` | **阶段 7 的功能提交**：`feat: add in-place interaction blocks (reveal/append/remove) and back/return choice targets` |
+| `0ea5e5df` | **阶段 8 的功能提交**：`feat: add raw SugarCube leaf blocks, variable loop-item source, switch and loop container blocks` |
 
 ### 约定
 
@@ -244,6 +245,17 @@
 - 消费方：interaction 块 label/content 非空即算有内容；`passage-card` 摘要跳过；`stripStateReferences` 删除状态时剥掉 interaction 块的条件。
 - 验收：`npm run lint` + `npx tsc --noEmit` + 相关单测 4 套 50/50；视觉截图确认 Interaction 块（Interaction text / Operation / Content / Add condition）正常渲染。
 
+### 阶段 8：流程容器与表达式边界（已完成）
+
+完成情况（提交 `0ea5e5df`，验收通过）：
+- **raw 原始宏叶子块**（`kind:'raw'`）：verbatim SugarCube 文本（不 trim），条件包裹，空内容跳过；表达式边界逃生舱（定调 1 落地）。
+- **variable 块加 source 字段**（`'state' | 'loopItem'`）：`loopItem` 编译为 `<<print _item>>`（配合 loop 块使用），`stateId` 变为可选。
+- **switch 多路分支块**（`kind:'switch'`）：按状态值匹配 `cases`（`sugarCubeValue` 渲染值）+ `defaultBlocks`，编译 `<<switch $x>><<case v>>…<</case>><<default>>…<</default>><</switch>>`，条件包裹；状态缺失或 cases+default 全空时跳过；模拟器高亮匹配的 case、变灰其余。
+- **loop 循环块**（`kind:'loop'`）：遍历 list 状态，编译 `<<for _item range $x>>body<</for>>`，body 递归编译；非 list 状态跳过；条件包裹。
+- 元数据：switch/loop 的 stateId 原样、case 值原样、嵌套块递归往返。
+- 消费方：switch/loop stateId 非空即算有内容；`stripStateReferences` 删除状态时清空其 stateId 并递归剥条件。
+- 验收：`npm run lint` + `npx tsc --noEmit` + 相关单测 4 套 71/71；视觉截图确认 Switch 块（Switch on / Add case / Default）与 Loop 块（Loop over / Loop body，嵌套在 Default 内渲染正常）。
+
 ### 阶段 6–9：SugarCube 全能力可视化（路线草案，阶段 6 已完成）
 
 > 方向决策（用户拍板）：目标是"全部做成我们的可视化适配"，让作者始终待在可视化里。**运行时唯一真相仍是 SugarCube**——可视化只是生成器/投影，永不反向解析（延续既有原则）。四条定调见下。
@@ -270,7 +282,7 @@
 - **阶段 5（已定）**：浅树 + 分支 + 人话条件 + 模拟器 + 状态面板 + 修 bug + 单向切源码。
 - **阶段 6（已完成）**：状态类型扩展 `list` + 数组动作（push/remove/clear + includes/notIncludes）；加「变量插入块」「引用块」。提交 `75c8eae8`。
 - **阶段 7（已完成）**：交互块家族（就地 reveal/append/remove + choice 的 back/return）。提交 `b03d7c66`。
-- **阶段 8**：流程容器（循环块、switch 块）；表达式边界定案落地。
+- **阶段 8（已完成）**：流程容器（loop 循环块、switch 多路分支块）+ raw 原始宏叶子（表达式边界定案落地）。提交 `0ea5e5df`。
 - **阶段 9**：特殊段落可视化表面（StoryInit 等）+ 可复用组件（若届时决定单独做）。
 
 每一阶段独立可验收，且不推翻前阶段 schema：块是 tagged union，加种类是加法；改已有种类才升版本。
@@ -352,8 +364,8 @@ npm run e2e              # Playwright E2E
 
 ### 模型标识（当前 harness 配置，环境变化时以实际为准）
 
-- flash 子代理：`provider: "deepseek-official"`，`model: "deepseek-v4-flash"`
-- 主模型：`provider: "deepseek-official"`，`model: "deepseek-v4-pro"`
+- flash 子代理：`provider: "opencode-go"`，`model: "deepseek-v4-flash"`
+- 主模型：`provider: "opencode-go"`，`model: "deepseek-v4-pro"`
 - 在 workflow 的 `meta.phases` 或每个 `agent()` 的 opts 里显式固定 flash，不依赖 preset 默认，避免子代理落到其他模型。
 
 ### 视觉验收闭环（2026-08 修订：flash 只实现，主模型亲自截图验收）

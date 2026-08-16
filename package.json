@@ -128,7 +128,7 @@
 		"build:electron-bundle": "electron-builder --config electron-builder.config.js --linux --mac --windows --publish=never",
 		"clean": "rimraf dist electron-build",
 		"e2e": "playwright test",
-		"lint": "eslint src",
+		"lint": "eslint src --ext .js,.jsx,.ts,.tsx",
 		"start": "vite",
 		"start:docs": "cd docs/en && mdbook serve",
 		"start:electron": "NODE_ENV=development npm-run-all --serial clean --parallel build:web build:electron-main --serial start:electron:boot",

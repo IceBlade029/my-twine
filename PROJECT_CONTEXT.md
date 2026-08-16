@@ -331,7 +331,7 @@
 npm install              # 安装依赖
 npm start                # Web 开发模式
 npm run start:electron   # Electron 开发模式
-npm run lint             # ESLint 检查 src
+npm run lint             # ESLint 检查 src（.js/.jsx/.ts/.tsx；CSS 已忽略）
 npx tsc --noEmit         # TypeScript 检查
 npx jest <path> --runInBand  # 运行指定测试
 npm run test             # Jest watch 模式

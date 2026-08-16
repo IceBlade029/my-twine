@@ -20,7 +20,7 @@ export default defineConfig({
 	},
 	plugins: [
 		checker({
-			eslint: {lintCommand: 'eslint src'},
+			eslint: {lintCommand: 'eslint src --ext .js,.jsx,.ts,.tsx'},
 			overlay: {
 				initialIsOpen: false
 			},

@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：用户实测确认当前右侧编辑器存在“模块占地过大、包含/缩进/同级顺序/条件隐藏关系不直观”的核心问题，并定案下一阶段采用**紧凑摘要树 + 选中模块就地展开 + 容器独立折叠 + 明确树线语义 + 临时模块选择器**。新增参考图进一步确认每种模块应有“摘要态 + 展开编辑态”两套同源投影，并记录媒体、输入、随机、等待、子流程等后续模块候选；候选均未排期、未实现，不属于阶段 10。首片低代码交互原型仍以提交 `5ed09202` 为当前实现基线。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现：现有模块获得同源紧凑摘要，普通模块默认收起且只展开当前选中项，Branch/Switch/Loop 保持独立折叠，运行记录定位深层块时会展开目标和祖先容器；树线、深层扁平化、条件/动作/错误/隐藏/未命中标签已落地。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。媒体、输入、随机、等待、子流程等候选仍未排期，不属于阶段 10。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -44,6 +44,7 @@
 | `0ea5e5df` | **阶段 8 的功能提交**：`feat: add raw SugarCube leaf blocks, variable loop-item source, switch and loop container blocks` |
 | `a9db5bf4` | **阶段 9 的功能提交**：`feat: move state init into visible StoryInit passage and recognize SugarCube special passages` |
 | `5ed09202` | **首片低代码交互原型**：`feat: vertical-slice prototype - expression AST, module selector, default Chinese, set-variable, and real SugarCube runtime check drawer` |
+| `c72cde1d` | **阶段 10A 功能提交**：`feat: add compact visual block tree interactions` |
 
 ### 约定
 
@@ -269,7 +270,7 @@
 - 顺手修复：阶段 5 遗留的过时测试 `create-untitled-passage.test.ts`（断言 v1 visual 形状）更新为 v2。
 - 验收：`npm run lint` + `npx tsc --noEmit` 通过；新增 4 个测试套件（special-passages/passage-card/passage-edit-contents/passage-actions/create-special-passage）+ 回归全绿；视觉验收确认地图 INIT 徽标、编辑器特殊段落注释与初始化预览。
 
-### 阶段 10：紧凑树形编辑器视觉与交互重构（已定案，待实现）
+### 阶段 10：紧凑树形编辑器视觉与交互重构（10A 已完成，10B–10D 待实现）
 
 > 用户真实使用当前版本后确认：右侧编辑区的主要问题已经不是能力缺失，而是每个模块把完整表单长期铺开，导致信息密度低；同时块树虽在数据中存在，界面却没有把**包含、缩进、同级执行顺序、互斥分支、当前隐藏**投影成一眼可读的视觉结构。阶段 6.5 已准备 `BlockShell` 与 `data-depth`，本阶段正式消费这些地基。
 
@@ -327,6 +328,22 @@
 7. 模拟器/运行检查切换测试值后，当前命中和隐藏状态同步更新；错误、隐藏、未命中使用不同视觉语义。
 8. 不改变相同故事的编译 SugarCube、metadata round-trip、地图连线和真实运行结果；相关单测、lint、tsc 通过。
 9. 主模型按“普通段落 / 条件展开 / 条件折叠 / 当前隐藏 / 深层嵌套 / 模块选择器 / 运行检查”关键状态亲自截图并逐张验收。
+
+阶段 10A 完成情况（提交 `c72cde1d`，2026-08-20）：
+
+- **同源摘要投影**：十种现有块均从真实块数据派生一行摘要；文本截断、Choice 目标、变量名、Set 表达式、Include 引用、交互动作、Branch/Switch/Loop 子模块计数均不写入第二份状态。
+- **单一普通块展开**：普通块默认紧凑，点击摘要行后原位展开；选择另一个普通块时前一个自动收起。编辑器继续挂载原专用 Editor，不改块 schema 或编译语义。
+- **容器独立折叠**：Branch/Switch/Loop 使用独立的纯视图折叠集合，互不影响；折叠后保留结构摘要、条件、动作和错误标签，折叠状态不进入故事 metadata。
+- **运行记录联动**：点击真实 SugarCube trace 条目会选中并展开目标普通块，同时自动展开其祖先容器；再次点击仍按原运行抽屉合同取消选中。
+- **树形与状态视觉**：嵌套 `BlockList` 增加连续树线和连接线，深层块减少卡片包裹；“未完成”“当前隐藏”“当前未命中”与条件/动作使用不同的文字标签，颜色不是唯一信息来源。
+- **验收**：`npm run lint`、`npx tsc --noEmit` 通过；`passage-visual-editor` + 编译/metadata/真实运行检查 4 套共 98 个测试通过。主模型在本地 Web 开发版亲自检查普通紧凑态、文本展开态、Choice 展开态、条件与动作摘要；确认右侧面板信息密度显著提升且单展开切换正常。
+- **保持不变**：`VisualPassageContentV2`、SugarCube 编译、发布、导入、metadata、地图连线和运行时语义均未修改。
+
+阶段 10 后续切片：
+
+1. **10B**：强化 If/Switch 的分叉视觉语法与“满足/否则”标识；相邻 Choice 只做视觉分组，不增加 `choiceGroup` schema。
+2. **10C**：把末尾追加改为任意合法位置 `insertAt(index)`；统一拖拽手柄并保留上移/下移与键盘移动，首版限制在同一 `BlockList` 内。
+3. **10D**：补齐引用视图、固定复杂验收段落和阶段 10 全部 7 类截图；复核真实 SugarCube、metadata round-trip 与地图连线不变。
 
 ### 阶段 10 之后：新模块候选池（方向记录，未排期、未实现）
 

@@ -672,7 +672,7 @@ describe('<PassageVisualEditor>', () => {
 		expect(gates[1].querySelector('svg')).toBeInTheDocument();
 	});
 
-	it('keeps ordinary blocks compact and expands only the selected editor', () => {
+	it('lets ordinary blocks expand independently and toggle closed', () => {
 		const {container} = renderComponent(story => {
 			story.passages[0].visual = {
 				blocks: [
@@ -694,9 +694,14 @@ describe('<PassageVisualEditor>', () => {
 		expect(blocks[0]).toHaveClass('is-selected');
 
 		fireEvent.click(blocks[1].querySelector('.block-summary-button') as Element);
-		expect(body(0)).toHaveClass('is-collapsed');
+		expect(body(0)).not.toHaveClass('is-collapsed');
 		expect(body(1)).not.toHaveClass('is-collapsed');
 		expect(blocks[1]).toHaveClass('is-selected');
+
+		fireEvent.click(blocks[0].querySelector('.block-summary-button') as Element);
+		expect(body(0)).toHaveClass('is-collapsed');
+		expect(body(1)).not.toHaveClass('is-collapsed');
+		expect(blocks[0]).toHaveClass('is-selected');
 	});
 
 	it('collapses containers independently while retaining their structure summary', () => {

@@ -465,7 +465,7 @@ function findBlockById(blocks: VisualBlock[], blockId: string): VisualBlock | un
 
 interface BlockTreeViewState {
 	collapsedContainerIds: Set<string>;
-	expandedBlockId?: string;
+	expandedBlockIds: Set<string>;
 	onSelectBlock: (blockId: string, container: boolean) => void;
 	onToggleContainer: (blockId: string) => void;
 	selectedBlockId?: string;
@@ -2484,7 +2484,7 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 	const [showCode, setShowCode] = React.useState(false);
 	const container = isContainerBlock(block);
 	const collapsed = container && treeView.collapsedContainerIds.has(block.id);
-	const expanded = container ? !collapsed : treeView.expandedBlockId === block.id;
+	const expanded = container ? !collapsed : treeView.expandedBlockIds.has(block.id);
 	const selected = treeView.selectedBlockId === block.id;
 	const incomplete = blockIsIncomplete(block);
 	const summary = blockSummaryText(block, states, story, t);
@@ -3083,9 +3083,9 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 	const [selectedBlockId, setSelectedBlockId] = React.useState<
 		string | undefined
 	>(undefined);
-	const [expandedBlockId, setExpandedBlockId] = React.useState<
-		string | undefined
-	>(undefined);
+	const [expandedBlockIds, setExpandedBlockIds] = React.useState(
+		() => new Set<string>()
+	);
 	const [collapsedContainerIds, setCollapsedContainerIds] = React.useState(
 		() => new Set<string>()
 	);
@@ -3105,7 +3105,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 
 	React.useEffect(() => {
 		setSelectedBlockId(undefined);
-		setExpandedBlockId(undefined);
+		setExpandedBlockIds(new Set());
 		setCollapsedContainerIds(new Set());
 	}, [passage.id]);
 
@@ -3114,7 +3114,17 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 			setSelectedBlockId(blockId);
 
 			if (!container) {
-				setExpandedBlockId(blockId);
+				setExpandedBlockIds(current => {
+					const next = new Set(current);
+
+					if (next.has(blockId)) {
+						next.delete(blockId);
+					} else {
+						next.add(blockId);
+					}
+
+					return next;
+				});
 			}
 		},
 		[]
@@ -3143,7 +3153,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 
 			setSelectedBlockId(blockId);
 			if (block && !isContainerBlock(block)) {
-				setExpandedBlockId(blockId);
+				setExpandedBlockIds(current => new Set([...current, blockId]));
 			}
 			setCollapsedContainerIds(current => {
 				const next = new Set(current);
@@ -3157,14 +3167,14 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 	const treeView = React.useMemo<BlockTreeViewState>(
 		() => ({
 			collapsedContainerIds,
-			expandedBlockId,
+			expandedBlockIds,
 			onSelectBlock: handleSelectBlock,
 			onToggleContainer: handleToggleContainer,
 			selectedBlockId
 		}),
 		[
 			collapsedContainerIds,
-			expandedBlockId,
+			expandedBlockIds,
 			handleSelectBlock,
 			handleToggleContainer,
 			selectedBlockId

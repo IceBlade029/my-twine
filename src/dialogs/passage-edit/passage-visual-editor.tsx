@@ -4,6 +4,8 @@ import {
 	IconArrowsRight,
 	IconArrowsSplit,
 	IconArrowUp,
+	IconChevronDown,
+	IconChevronUp,
 	IconCode,
 	IconFileImport,
 	IconGitBranch,
@@ -262,6 +264,211 @@ function collectBlockKinds(
 	visit(blocks);
 
 	return result;
+}
+
+function isContainerBlock(block: VisualBlock) {
+	return block.kind === 'branch' || block.kind === 'switch' || block.kind === 'loop';
+}
+
+function countNestedBlocks(block: VisualBlock): number {
+	if (block.kind === 'branch') {
+		return block.branches.reduce((total, branch) => total + branch.blocks.length, 0);
+	}
+
+	if (block.kind === 'switch') {
+		return (
+			block.cases.reduce((total, item) => total + item.blocks.length, 0) +
+			block.defaultBlocks.length
+		);
+	}
+
+	return block.kind === 'loop' ? block.blocks.length : 0;
+}
+
+function shortened(value: string, fallback: string, maximum = 72) {
+	const normalized = value.replace(/\s+/g, ' ').trim();
+
+	if (normalized === '') {
+		return fallback;
+	}
+
+	return normalized.length > maximum
+		? `${normalized.slice(0, maximum - 1)}…`
+		: normalized;
+}
+
+function blockIsIncomplete(block: VisualBlock) {
+	if (block.kind === 'choice') {
+		return (
+			block.label.trim() === '' ||
+			(!block.specialTarget && block.targetPassageId === '')
+		);
+	}
+
+	if (block.kind === 'variable') {
+		return block.source !== 'loopItem' && !block.stateId;
+	}
+
+	if (block.kind === 'set') {
+		return block.variableId === '';
+	}
+
+	if (block.kind === 'raw') {
+		return block.sugar.trim() === '';
+	}
+
+	if (block.kind === 'include') {
+		return block.targetPassageId === '';
+	}
+
+	if (block.kind === 'interaction') {
+		return block.label.trim() === '';
+	}
+
+	if (block.kind === 'switch' || block.kind === 'loop') {
+		return block.stateId === '';
+	}
+
+	if (block.kind === 'branch') {
+		return block.branches.slice(0, -1).some(item => !item.condition);
+	}
+
+	return false;
+}
+
+function blockSummaryText(
+	block: VisualBlock,
+	states: VisualStoryState[],
+	story: Story,
+	t: TFunction
+) {
+	const empty = t('dialogs.passageEdit.visual.summaryEmpty');
+
+	if (block.kind === 'text') {
+		return shortened(block.text, empty);
+	}
+
+	if (block.kind === 'choice') {
+		const target = block.specialTarget
+			? t(
+					block.specialTarget === 'back'
+						? 'dialogs.passageEdit.visual.targetBack'
+						: 'dialogs.passageEdit.visual.targetReturn'
+				)
+			: story.passages.find(item => item.id === block.targetPassageId)?.name ?? '—';
+		return `${shortened(block.label, empty, 42)} → ${target}`;
+	}
+
+	if (block.kind === 'variable') {
+		if (block.source === 'loopItem') {
+			return '_item';
+		}
+
+		const state = states.find(item => item.id === block.stateId);
+		return state ? visualStateName(state) : '—';
+	}
+
+	if (block.kind === 'set') {
+		return setStructureSummary(block, states);
+	}
+
+	if (block.kind === 'raw') {
+		return shortened(block.sugar, empty);
+	}
+
+	if (block.kind === 'include') {
+		const target = story.passages.find(item => item.id === block.targetPassageId);
+		return `↗ ${target?.name ?? '—'}`;
+	}
+
+	if (block.kind === 'interaction') {
+		return `${shortened(block.label, empty, 42)} · ${t(
+			block.operation === 'reveal'
+				? 'dialogs.passageEdit.visual.operationReveal'
+				: block.operation === 'append'
+					? 'dialogs.passageEdit.visual.operationAppend'
+					: 'dialogs.passageEdit.visual.interactionOperationRemove'
+		)}`;
+	}
+
+	if (block.kind === 'branch') {
+		return t('dialogs.passageEdit.visual.summaryBranch', {
+			branches: block.branches.length,
+			children: countNestedBlocks(block)
+		});
+	}
+
+	if (block.kind === 'switch') {
+		const state = states.find(item => item.id === block.stateId);
+		return t('dialogs.passageEdit.visual.summarySwitch', {
+			children: countNestedBlocks(block),
+			count: block.cases.length,
+			state: state ? visualStateName(state) : '—'
+		});
+	}
+
+	const state = states.find(item => item.id === block.stateId);
+	return t('dialogs.passageEdit.visual.summaryLoop', {
+		children: countNestedBlocks(block),
+		state: state ? visualStateName(state) : '—'
+	});
+}
+
+function collectBlockAncestors(blocks: VisualBlock[]) {
+	const result: Record<string, string[]> = {};
+
+	function visit(list: VisualBlock[], ancestors: string[]) {
+		list.forEach(block => {
+			result[block.id] = ancestors;
+
+			if (block.kind === 'branch') {
+				block.branches.forEach(branch => visit(branch.blocks, [...ancestors, block.id]));
+			} else if (block.kind === 'switch') {
+				block.cases.forEach(item => visit(item.blocks, [...ancestors, block.id]));
+				visit(block.defaultBlocks, [...ancestors, block.id]);
+			} else if (block.kind === 'loop') {
+				visit(block.blocks, [...ancestors, block.id]);
+			}
+		});
+	}
+
+	visit(blocks, []);
+	return result;
+}
+
+function findBlockById(blocks: VisualBlock[], blockId: string): VisualBlock | undefined {
+	for (const block of blocks) {
+		if (block.id === blockId) {
+			return block;
+		}
+
+		const nestedLists =
+			block.kind === 'branch'
+				? block.branches.map(branch => branch.blocks)
+				: block.kind === 'switch'
+					? [...block.cases.map(item => item.blocks), block.defaultBlocks]
+					: block.kind === 'loop'
+						? [block.blocks]
+						: [];
+
+		for (const nested of nestedLists) {
+			const match = findBlockById(nested, blockId);
+
+			if (match) {
+				return match;
+			}
+		}
+	}
+
+	return undefined;
+}
+
+interface BlockTreeViewState {
+	collapsedContainerIds: Set<string>;
+	expandedBlockId?: string;
+	onSelectBlock: (blockId: string, container: boolean) => void;
+	onToggleContainer: (blockId: string) => void;
+	selectedBlockId?: string;
 }
 
 /** A value a state can hold during simulation; list states hold string[]. */
@@ -1824,10 +2031,10 @@ interface BranchEditorProps {
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualBranchBlock>) => void;
-	selectedBlockId?: string;
 	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
+	treeView: BlockTreeViewState;
 }
 
 /**
@@ -1852,10 +2059,10 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 		onSaveFlushed,
 		onSavePending,
 		onUpdate,
-		selectedBlockId,
 		simulated,
 		states,
-		story
+		story,
+		treeView
 	} = props;
 	const {t} = useTranslation();
 
@@ -1933,10 +2140,8 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 								</span>
 							)}
 							{inactive && (
-								<span className="hidden-badge">
-									{item.condition
-										? hiddenBecauseText(t, item.condition, states)
-										: t('dialogs.passageEdit.visual.hidden')}
+								<span className="not-hit-badge">
+									{t('dialogs.passageEdit.visual.statusNotHit')}
 								</span>
 							)}
 							<button
@@ -1954,10 +2159,10 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 							onChange={blocks => updateBranch(index, {blocks})}
 							onSaveFlushed={onSaveFlushed}
 							onSavePending={onSavePending}
-							selectedBlockId={selectedBlockId}
 							simulated={simulated}
 							states={states}
 							story={story}
+							treeView={treeView}
 						/>
 					</div>
 				);
@@ -1976,10 +2181,10 @@ interface SwitchBlockEditorProps {
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualSwitchBlock>) => void;
-	selectedBlockId?: string;
 	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
+	treeView: BlockTreeViewState;
 }
 
 /**
@@ -1997,10 +2202,10 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 		onSaveFlushed,
 		onSavePending,
 		onUpdate,
-		selectedBlockId,
 		simulated,
 		states,
-		story
+		story,
+		treeView
 	} = props;
 	const {t} = useTranslation();
 	const switchState = states.find(item => item.id === block.stateId);
@@ -2063,6 +2268,11 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 					>
 						<div className="switch-case-heading">
 							<span>{t('dialogs.passageEdit.visual.switchCase')}</span>
+							{inactive && (
+								<span className="not-hit-badge">
+									{t('dialogs.passageEdit.visual.statusNotHit')}
+								</span>
+							)}
 							<StateValueInput
 								label={t('dialogs.passageEdit.visual.switchCaseValue')}
 								onChange={value => updateCase(index, {value})}
@@ -2082,10 +2292,10 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 							onChange={blocks => updateCase(index, {blocks})}
 							onSaveFlushed={onSaveFlushed}
 							onSavePending={onSavePending}
-							selectedBlockId={selectedBlockId}
 							simulated={simulated}
 							states={states}
 							story={story}
+							treeView={treeView}
 						/>
 					</div>
 				);
@@ -2100,7 +2310,14 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 						: 'switch-default'
 				}
 			>
-				<span>{t('dialogs.passageEdit.visual.switchDefault')}</span>
+				<div className="switch-default-heading">
+					<span>{t('dialogs.passageEdit.visual.switchDefault')}</span>
+					{simulatorOpen && active !== undefined && (
+						<span className="not-hit-badge">
+							{t('dialogs.passageEdit.visual.statusNotHit')}
+						</span>
+					)}
+				</div>
 				<BlockList
 					blocks={block.defaultBlocks}
 					depth={depth + 1}
@@ -2108,10 +2325,10 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 					onChange={blocks => onUpdate({defaultBlocks: blocks})}
 					onSaveFlushed={onSaveFlushed}
 					onSavePending={onSavePending}
-					selectedBlockId={selectedBlockId}
 					simulated={simulated}
 					states={states}
 					story={story}
+					treeView={treeView}
 				/>
 			</div>
 			<div>
@@ -2133,10 +2350,10 @@ interface LoopBlockEditorProps {
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualLoopBlock>) => void;
-	selectedBlockId?: string;
 	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
+	treeView: BlockTreeViewState;
 }
 
 /**
@@ -2151,10 +2368,10 @@ const LoopBlockEditor: React.FC<LoopBlockEditorProps> = props => {
 		onSaveFlushed,
 		onSavePending,
 		onUpdate,
-		selectedBlockId,
 		simulated,
 		states,
-		story
+		story,
+		treeView
 	} = props;
 	const {t} = useTranslation();
 	const listStates = states.filter(state => state.type === 'list');
@@ -2199,10 +2416,10 @@ const LoopBlockEditor: React.FC<LoopBlockEditorProps> = props => {
 					onChange={blocks => onUpdate({blocks})}
 					onSaveFlushed={onSaveFlushed}
 					onSavePending={onSavePending}
-					selectedBlockId={selectedBlockId}
 					simulated={simulated}
 					states={states}
 					story={story}
+					treeView={treeView}
 				/>
 			</div>
 			<div>
@@ -2231,9 +2448,9 @@ interface BlockShellProps {
 	onDelete: () => void;
 	onMoveDown: () => void;
 	onMoveUp: () => void;
-	selected?: boolean;
 	states: VisualStoryState[];
 	story: Story;
+	treeView: BlockTreeViewState;
 }
 
 /**
@@ -2258,13 +2475,19 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		onDelete,
 		onMoveDown,
 		onMoveUp,
-		selected,
 		states,
-		story
+		story,
+		treeView
 	} = props;
 	const {t} = useTranslation();
 	const Icon = icon;
 	const [showCode, setShowCode] = React.useState(false);
+	const container = isContainerBlock(block);
+	const collapsed = container && treeView.collapsedContainerIds.has(block.id);
+	const expanded = container ? !collapsed : treeView.expandedBlockId === block.id;
+	const selected = treeView.selectedBlockId === block.id;
+	const incomplete = blockIsIncomplete(block);
+	const summary = blockSummaryText(block, states, story, t);
 	const fragment = React.useMemo(
 		() => compileBlockFragment(block, states, story).trim(),
 		[block, states, story]
@@ -2272,29 +2495,58 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 
 	return (
 		<div
-			className={
-				selected
-					? 'visual-block is-selected'
-					: 'visual-block'
-			}
+			className={`visual-block${selected ? ' is-selected' : ''}${
+				expanded ? ' is-expanded' : ' is-compact'
+			}${container ? ' is-container' : ''}`}
 			data-depth={depth}
 		>
 			<div className="block-header">
-				<div className="block-gate">
+				<button
+					aria-expanded={expanded}
+					className="block-summary-button"
+					onClick={() => treeView.onSelectBlock(block.id, container)}
+					type="button"
+				>
 					<Icon />
-					<span className="block-kind">{kindLabel}</span>
+					<span className="block-summary-main">
+						<span className="block-kind">{kindLabel}</span>
+						<span className="block-structure-summary">{summary}</span>
+					</span>
 					{condition && !hidden && (
-						<span className="block-condition-summary">
+						<span className="block-status-tag condition-status">
 							{conditionSentenceText(t, condition, states)}
 						</span>
 					)}
 					{hidden && condition && (
-						<span className="hidden-badge">
-							{hiddenBecauseText(t, condition, states)}
+						<span className="block-status-tag hidden-badge">
+							{t('dialogs.passageEdit.visual.statusHidden')}
 						</span>
 					)}
-				</div>
+					{block.kind === 'choice' && block.actions.length > 0 && (
+						<span className="block-status-tag action-status">
+							{t('dialogs.passageEdit.visual.summaryActions', {
+								count: block.actions.length
+							})}
+						</span>
+					)}
+					{incomplete && (
+						<span className="block-status-tag error-status">
+							{t('dialogs.passageEdit.visual.statusIncomplete')}
+						</span>
+					)}
+				</button>
 				<div className="block-toolbar">
+					{container && (
+						<IconButton
+							disabled={disabled}
+							icon={collapsed ? <IconChevronDown /> : <IconChevronUp />}
+							iconOnly
+							label={t(
+								collapsed ? 'common.expand' : 'common.collapse'
+							)}
+							onClick={() => treeView.onToggleContainer(block.id)}
+						/>
+					)}
 					<IconButton
 						disabled={disabled}
 						icon={<IconCode />}
@@ -2334,9 +2586,9 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 				</pre>
 			)}
 			<div
-				className={
-					hidden ? 'visual-block-body is-hidden' : 'visual-block-body'
-				}
+				className={`visual-block-body${hidden ? ' is-hidden' : ''}${
+					expanded ? '' : ' is-collapsed'
+				}`}
 			>
 				{children}
 			</div>
@@ -2351,10 +2603,10 @@ interface BlockListProps {
 	onChange: (blocks: VisualBlock[]) => void;
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
-	selectedBlockId?: string;
 	simulated?: Record<string, SimulatedValue>;
 	states: VisualStoryState[];
 	story: Story;
+	treeView: BlockTreeViewState;
 }
 
 const BlockList: React.FC<BlockListProps> = props => {
@@ -2365,10 +2617,10 @@ const BlockList: React.FC<BlockListProps> = props => {
 		onChange,
 		onSaveFlushed,
 		onSavePending,
-		selectedBlockId,
 		simulated,
 		states,
-		story
+		story,
+		treeView
 	} = props;
 	const {t} = useTranslation();
 
@@ -2516,7 +2768,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 	const [selectorOpen, setSelectorOpen] = React.useState(false);
 
 	return (
-		<div className="visual-block-list">
+		<div className="visual-block-list" data-depth={depth}>
 			{blocks.map((block, index) => {
 				const choiceIndex = blocks
 					.slice(0, index)
@@ -2540,9 +2792,9 @@ const BlockList: React.FC<BlockListProps> = props => {
 						onDelete={() => deleteBlock(index)}
 						onMoveDown={() => moveBlock(index, 1)}
 						onMoveUp={() => moveBlock(index, -1)}
-						selected={block.id === selectedBlockId}
 						states={states}
 						story={story}
+						treeView={treeView}
 					>
 						{block.kind === 'text' && (
 							<TextBlockEditor
@@ -2580,10 +2832,10 @@ const BlockList: React.FC<BlockListProps> = props => {
 								onUpdate={props =>
 									updateBlock(block.id, {...block, ...props})
 								}
-								selectedBlockId={selectedBlockId}
 								simulated={simulated}
 								states={states}
 								story={story}
+								treeView={treeView}
 							/>
 						)}
 						{block.kind === 'variable' && (
@@ -2647,10 +2899,10 @@ const BlockList: React.FC<BlockListProps> = props => {
 								onUpdate={props =>
 									updateBlock(block.id, {...block, ...props})
 								}
-								selectedBlockId={selectedBlockId}
 								simulated={simulated}
 								states={states}
 								story={story}
+								treeView={treeView}
 							/>
 						)}
 						{block.kind === 'loop' && (
@@ -2663,10 +2915,10 @@ const BlockList: React.FC<BlockListProps> = props => {
 								onUpdate={props =>
 									updateBlock(block.id, {...block, ...props})
 								}
-								selectedBlockId={selectedBlockId}
 								simulated={simulated}
 								states={states}
 								story={story}
+								treeView={treeView}
 							/>
 						)}
 					</BlockShell>
@@ -2831,6 +3083,12 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 	const [selectedBlockId, setSelectedBlockId] = React.useState<
 		string | undefined
 	>(undefined);
+	const [expandedBlockId, setExpandedBlockId] = React.useState<
+		string | undefined
+	>(undefined);
+	const [collapsedContainerIds, setCollapsedContainerIds] = React.useState(
+		() => new Set<string>()
+	);
 	const [simulatedValues, setSimulatedValues] = React.useState<
 		Record<string, SimulatedValue>
 	>({});
@@ -2840,6 +3098,78 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 		[passage.visual]
 	);
 	const states = story.visual?.states ?? [];
+	const blockAncestors = React.useMemo(
+		() => collectBlockAncestors(content.blocks),
+		[content.blocks]
+	);
+
+	React.useEffect(() => {
+		setSelectedBlockId(undefined);
+		setExpandedBlockId(undefined);
+		setCollapsedContainerIds(new Set());
+	}, [passage.id]);
+
+	const handleSelectBlock = React.useCallback(
+		(blockId: string, container: boolean) => {
+			setSelectedBlockId(blockId);
+
+			if (!container) {
+				setExpandedBlockId(blockId);
+			}
+		},
+		[]
+	);
+	const handleToggleContainer = React.useCallback((blockId: string) => {
+		setCollapsedContainerIds(current => {
+			const next = new Set(current);
+
+			if (next.has(blockId)) {
+				next.delete(blockId);
+			} else {
+				next.add(blockId);
+			}
+
+			return next;
+		});
+	}, []);
+	const handleTraceSelectBlock = React.useCallback(
+		(blockId?: string) => {
+			if (!blockId) {
+				setSelectedBlockId(undefined);
+				return;
+			}
+
+			const block = findBlockById(content.blocks, blockId);
+
+			setSelectedBlockId(blockId);
+			if (block && !isContainerBlock(block)) {
+				setExpandedBlockId(blockId);
+			}
+			setCollapsedContainerIds(current => {
+				const next = new Set(current);
+
+				(blockAncestors[blockId] ?? []).forEach(id => next.delete(id));
+				return next;
+			});
+		},
+		[blockAncestors, content.blocks]
+	);
+	const treeView = React.useMemo<BlockTreeViewState>(
+		() => ({
+			collapsedContainerIds,
+			expandedBlockId,
+			onSelectBlock: handleSelectBlock,
+			onToggleContainer: handleToggleContainer,
+			selectedBlockId
+		}),
+		[
+			collapsedContainerIds,
+			expandedBlockId,
+			handleSelectBlock,
+			handleToggleContainer,
+			selectedBlockId
+		]
+	);
 
 	// Reset simulated values whenever the story's state list changes.
 	const stateKey = states
@@ -2941,10 +3271,10 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 					onChange={updateBlocks}
 					onSaveFlushed={onSaveFlushed}
 					onSavePending={onSavePending}
-					selectedBlockId={selectedBlockId}
 					simulated={simulated}
 					states={states}
 					story={story}
+					treeView={treeView}
 				/>
 			</section>
 
@@ -2980,7 +3310,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 					<PassageVisualRunDrawer
 						blockLabelMap={blockLabelMap}
 						compiledSource={runCompiledSource}
-						onSelectBlock={setSelectedBlockId}
+						onSelectBlock={handleTraceSelectBlock}
 						onSimulatedValuesChange={setSimulatedValues}
 						passage={passage}
 						selectedBlockId={selectedBlockId}

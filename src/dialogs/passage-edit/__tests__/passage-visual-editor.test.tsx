@@ -666,10 +666,71 @@ describe('<PassageVisualEditor>', () => {
 		expect(depths).toEqual(['0', '1']);
 
 		// Every block gate renders the kind icon next to the label.
-		const gates = container.querySelectorAll('.block-gate');
+		const gates = container.querySelectorAll('.block-summary-button');
 
 		expect(gates[0].querySelector('svg')).toBeInTheDocument();
 		expect(gates[1].querySelector('svg')).toBeInTheDocument();
+	});
+
+	it('keeps ordinary blocks compact and expands only the selected editor', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{id: 'text-1', kind: 'text', text: 'First'},
+					{id: 'text-2', kind: 'text', text: 'Second'}
+				],
+				version: 2
+			};
+		});
+		const blocks = container.querySelectorAll('.visual-block');
+		const body = (index: number) =>
+			blocks[index].querySelector('.visual-block-body');
+
+		expect(body(0)).toHaveClass('is-collapsed');
+		expect(body(1)).toHaveClass('is-collapsed');
+
+		fireEvent.click(blocks[0].querySelector('.block-summary-button') as Element);
+		expect(body(0)).not.toHaveClass('is-collapsed');
+		expect(blocks[0]).toHaveClass('is-selected');
+
+		fireEvent.click(blocks[1].querySelector('.block-summary-button') as Element);
+		expect(body(0)).toHaveClass('is-collapsed');
+		expect(body(1)).not.toHaveClass('is-collapsed');
+		expect(blocks[1]).toHaveClass('is-selected');
+	});
+
+	it('collapses containers independently while retaining their structure summary', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{
+						branches: [
+							{blocks: [{id: 't1', kind: 'text', text: 'A'}], id: 'b1'},
+							{blocks: [], id: 'b2'}
+						],
+						id: 'branch-1',
+						kind: 'branch'
+					},
+					{blocks: [{id: 't2', kind: 'text', text: 'B'}], id: 'loop-1', kind: 'loop', stateId: ''}
+				],
+				version: 2
+			};
+		});
+		const topBlocks = container.querySelectorAll(
+			'.visual-block-list[data-depth="0"] > .visual-block'
+		);
+
+		expect(topBlocks[0]).toHaveClass('is-expanded');
+		expect(topBlocks[1]).toHaveClass('is-expanded');
+		expect(
+			topBlocks[0].querySelector('.block-structure-summary')
+		).toHaveTextContent('dialogs.passageEdit.visual.summaryBranch');
+
+		fireEvent.click(
+			within(topBlocks[0] as HTMLElement).getByLabelText('common.collapse')
+		);
+		expect(topBlocks[0]).toHaveClass('is-compact');
+		expect(topBlocks[1]).toHaveClass('is-expanded');
 	});
 
 	it('shows a read-only initialization preview when editing the StoryInit passage with states', () => {
@@ -1339,7 +1400,7 @@ describe('simulator', () => {
 		// and annotated as hidden.
 		expect(body()).toHaveClass('is-hidden');
 		expect(
-			screen.getByText('dialogs.passageEdit.visual.hiddenBecause')
+			screen.getByText('dialogs.passageEdit.visual.statusHidden')
 		).toBeInTheDocument();
 
 		// Setting a matching value restores the block.
@@ -1440,7 +1501,7 @@ describe('simulator', () => {
 		expect(branches()[0]).toHaveClass('is-inactive');
 		expect(branches()[1]).not.toHaveClass('is-inactive');
 		expect(
-			screen.getByText('dialogs.passageEdit.visual.hiddenBecause')
+			screen.getByText('dialogs.passageEdit.visual.statusNotHit')
 		).toBeInTheDocument();
 
 		// A matching value activates the first branch and dims the else branch.
@@ -1450,7 +1511,9 @@ describe('simulator', () => {
 		);
 		expect(branches()[0]).not.toHaveClass('is-inactive');
 		expect(branches()[1]).toHaveClass('is-inactive');
-		expect(screen.getByText('dialogs.passageEdit.visual.hidden')).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.statusNotHit')
+		).toBeInTheDocument();
 	});
 
 	it('simulates list state values from comma-separated input', () => {
@@ -1672,6 +1735,60 @@ describe('运行检查 runtime drawer (P3)', () => {
 		expect(
 			container.querySelectorAll('.visual-block.is-selected').length
 		).toBe(0);
+	});
+
+	it('opens collapsed ancestors and expands a nested block selected from trace', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{
+						branches: [
+							{blocks: [{id: 'nested-text', kind: 'text', text: 'Inside'}], id: 'b1'},
+							{blocks: [], id: 'b2'}
+						],
+						id: 'branch-1',
+						kind: 'branch'
+					}
+				],
+				version: 2
+			};
+		});
+		const branch = container.querySelector(
+			'.visual-block[data-depth="0"]'
+		) as HTMLElement;
+
+		fireEvent.click(within(branch).getByLabelText('common.collapse'));
+		expect(branch).toHaveClass('is-compact');
+
+		const runner = captureMessageHandler();
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.runtimeDrawer')
+		);
+		fireEvent.click(
+			screen.getByRole('tab', {name: 'dialogs.passageEdit.visual.runTabTrace'})
+		);
+		runner({
+			type: 'narrative-test-result',
+			before: {},
+			after: {},
+			html: '<p>Inside</p>',
+			trace: [{b: 'nested-text', ev: 's'}]
+		});
+		fireEvent.click(
+			container.querySelector(
+				'.run-trace-entry.run-trace-clickable'
+			) as Element
+		);
+
+		expect(branch).toHaveClass('is-expanded');
+		const nested = container.querySelector(
+			'.visual-block[data-depth="1"]'
+		) as HTMLElement;
+		expect(nested).toHaveClass('is-selected');
+		expect(nested).toHaveClass('is-expanded');
+		expect(nested.querySelector('.visual-block-body')).not.toHaveClass(
+			'is-collapsed'
+		);
 	});
 
 	it('casts an engine error into the runtime-error banner', () => {

@@ -81,7 +81,7 @@ export function compileExpression(
 		case 'loopItem':
 			return '_item';
 		case 'free':
-			return expr.code;
+			return expr.code.trim() === '' ? undefined : expr.code;
 		case 'variable': {
 			const state = states.find(item => item.id === expr.variableId);
 
@@ -155,9 +155,10 @@ export function compileBlockFragment(
 	block: VisualBlock,
 	states: VisualStoryState[],
 	story: Story,
-	passageId?: string
+	passageId?: string,
+	insideLoop = false
 ): string {
-	return compileBlocks([block], states, story, passageId).join('\n');
+	return compileBlocks([block], states, story, passageId, false, insideLoop).join('\n');
 }
 
 /**
@@ -218,7 +219,8 @@ function compileBlocks(
 	states: VisualStoryState[],
 	story: Story,
 	passageId?: string,
-	trace = false
+	trace = false,
+	insideLoop = false
 ): string[] {
 	return blocks.reduce<string[]>((output, block) => {
 		// Trace markers surround every block fragment so the runtime drawer can
@@ -349,6 +351,10 @@ function compileBlocks(
 
 		if (block.kind === 'variable') {
 			if (block.source === 'loopItem') {
+				if (!insideLoop) {
+					return output;
+				}
+
 				const code = '<<print _item>>';
 				const condition = block.condition
 					? compileExpression(block.condition, states)
@@ -384,7 +390,11 @@ function compileBlocks(
 
 			const value = compileExpression(block.value, states);
 
-			if (value === undefined) {
+			if (
+				value === undefined ||
+				(block.value.kind === 'loopItem' && !insideLoop) ||
+				(block.operation !== '=' && state.type !== 'number')
+			) {
 				return output;
 			}
 
@@ -442,8 +452,9 @@ function compileBlocks(
 							states,
 							story,
 							passageId,
-							trace
-						).join('\n')}<</case>>`
+							trace,
+							insideLoop
+						).join('\n')}`
 				)
 				.join('');
 			const defaultCode =
@@ -453,8 +464,9 @@ function compileBlocks(
 							states,
 							story,
 							passageId,
-							trace
-						).join('\n')}<</default>>`
+							trace,
+							insideLoop
+						).join('\n')}`
 					: '';
 			const code = `<<switch ${visualStateVariable(
 				state
@@ -482,7 +494,8 @@ function compileBlocks(
 				states,
 				story,
 				passageId,
-				trace
+				trace,
+				true
 			).join('\n')}<</for>>`;
 			const condition = block.condition
 				? compileExpression(block.condition, states)
@@ -495,6 +508,21 @@ function compileBlocks(
 		// A branch block compiles into a single <<if>> chain. The else branch
 		// (condition undefined) must be last; blocks within each branch are
 		// compiled recursively with the same passage id.
+		if (
+			block.branches.length < 2 ||
+			block.branches.slice(0, -1).some(branch => !branch.condition) ||
+			block.branches[block.branches.length - 1].condition
+		) {
+			return output;
+		}
+		const branchConditions = block.branches
+			.slice(0, -1)
+			.map(branch => compileExpression(branch.condition!, states));
+
+		if (branchConditions.some(condition => condition === undefined)) {
+			return output;
+		}
+
 		const record = (cond: string | boolean | undefined) =>
 			trace
 				? `(window.__trace.push({c:${JSON.stringify(
@@ -508,25 +536,16 @@ function compileBlocks(
 				states,
 				story,
 				passageId,
-				trace
+				trace,
+				insideLoop
 			).join('\n');
-			const condition = branch.condition
-				? compileExpression(branch.condition, states)
-				: undefined;
+			const condition = branchConditions[index];
 
-			// Defensive: a leading conditionless branch is invalid per the data
-			// model (the editor creates such blocks before the user picks a
-			// condition), so treat it as always-true rather than emitting an
-			// invalid `<<else>>` first.
 			const keyword =
 				index === 0
-					? condition
-						? trace
-							? `<<if ${record(condition)}>>`
-							: `<<if ${condition}>>`
-						: trace
-							? `<<if ${record(true)}>>`
-							: '<<if 1>>'
+					? trace
+						? `<<if ${record(condition)}>>`
+						: `<<if ${condition}>>`
 					: condition
 						? trace
 							? `<<elseif ${record(condition)}>>`

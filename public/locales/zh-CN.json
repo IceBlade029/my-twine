@@ -335,6 +335,13 @@
 				"selectBlockHint": "点按一个执行记录条目以在编辑器中高亮对应模块。",
 				"traceUnknownBlock": "未知模块",
 				"addModule": "在此添加模块",
+				"moduleSearchPlaceholder": "搜索模块名称或技术别名",
+				"selectorGroupCommon": "常用",
+				"selectorGroupControlFlow": "控制流",
+				"selectorGroupContentReuse": "内容与复用",
+				"selectorGroupInteractionActions": "交互与动作",
+				"selectorGroupAdvanced": "高级",
+				"noListStateSelectorReason": "当前没有列表变量，请先创建列表变量。",
 				"advancedSyntaxNote": "该表达式包含高级语法，只能在表达式模式编辑。",
 				"blockCode": "代码",
 				"blockKindSet": "修改变量",
@@ -345,6 +352,7 @@
 				"expressionSymbol": "表达式",
 				"formatNotLoaded": "故事格式尚未加载，无法运行测试。",
 				"loopItemValueHint": "显示当前循环项（仅在遍历列表内使用）。",
+				"loopItemOutsideLoop": "循环项只能在循环模块内部使用。",
 				"nameConflictWarning": "变量名冲突：生成代码会使用 ${{name}}",
 				"readsVariables": "读取变量",
 				"setOperation": "操作",
@@ -368,7 +376,8 @@
 				"moduleTextDescription": "输出一段正文。",
 				"moduleChoiceDescription": "向玩家展示一个选项，点击后跳转或修改变量。",
 				"moduleInteractionDescription": "点击后就地显示、追加或移除一段内容。",
-				"moduleVariableDescription": "把变量或循环项的当前值显示在正文中。"
+				"moduleVariableDescription": "把变量或循环项的当前值显示在正文中。",
+				"specialTargetActionsUnavailable": "返回上一段或返回目标不支持变量动作。"
 			}
 		},
 		"passageTags": {

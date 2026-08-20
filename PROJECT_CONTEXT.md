@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并在用户实测后由提交 `d48a6fad` 修正普通模块展开合同：普通模块默认收起，但每个模块可独立展开/收缩并允许同时展开多个；再次点击自身即可收起，运行记录定位只补充展开目标和祖先，不关闭其他模块。Branch/Switch/Loop 继续保持独立折叠；树线、深层扁平化、条件/动作/错误/隐藏/未命中标签已落地。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并在用户实测后由提交 `d48a6fad` 修正普通模块展开合同；当前工作树又完成一轮既有模块正确性修复：条件分支恢复条件入口且不再把未完成分支编译成永真，多路分支改为 SugarCube 正确子标签语法，循环项限定在循环作用域，修改变量限制数字增减，选择的返回目标不再保留不可执行动作，模块选择器补齐中文分组并适配窄面板。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -254,7 +254,7 @@
 完成情况（提交 `0ea5e5df`，验收通过）：
 - **raw 原始宏叶子块**（`kind:'raw'`）：verbatim SugarCube 文本（不 trim），条件包裹，空内容跳过；表达式边界逃生舱（定调 1 落地）。
 - **variable 块加 source 字段**（`'state' | 'loopItem'`）：`loopItem` 编译为 `<<print _item>>`（配合 loop 块使用），`stateId` 变为可选。
-- **switch 多路分支块**（`kind:'switch'`）：按状态值匹配 `cases`（`sugarCubeValue` 渲染值）+ `defaultBlocks`，编译 `<<switch $x>><<case v>>…<</case>><<default>>…<</default>><</switch>>`，条件包裹；状态缺失或 cases+default 全空时跳过；模拟器高亮匹配的 case、变灰其余。
+- **switch 多路分支块**（`kind:'switch'`）：按状态值匹配 `cases`（`sugarCubeValue` 渲染值）+ `defaultBlocks`，编译 `<<switch $x>><<case v>>…<<default>>…<</switch>>`；`case/default` 是 `switch` 的子标签，没有各自的结束标签。支持条件包裹；状态缺失或 cases+default 全空时跳过并在编辑器标记未完成；模拟器高亮匹配的 case、变灰其余。
 - **loop 循环块**（`kind:'loop'`）：遍历 list 状态，编译 `<<for _item range $x>>body<</for>>`，body 递归编译；非 list 状态跳过；条件包裹。
 - 元数据：switch/loop 的 stateId 原样、case 值原样、嵌套块递归往返。
 - 消费方：switch/loop stateId 非空即算有内容；`stripStateReferences` 删除状态时清空其 stateId 并递归剥条件。
@@ -338,7 +338,10 @@
 - **运行记录联动**：点击真实 SugarCube trace 条目会选中并展开目标普通块，同时自动展开其祖先容器；再次点击仍按原运行抽屉合同取消选中。
 - **树形与状态视觉**：嵌套 `BlockList` 增加连续树线和连接线，深层块减少卡片包裹；“未完成”“当前隐藏”“当前未命中”与条件/动作使用不同的文字标签，颜色不是唯一信息来源。
 - **验收**：`npm run lint`、`npx tsc --noEmit` 通过；`passage-visual-editor` + 编译/metadata/真实运行检查 4 套共 98 个测试通过。独立展开修正另有测试覆盖默认收起、多模块同时展开、再次点击单独收起及 trace 展开祖先；主模型已在本地 Web 开发版检查普通紧凑态、文本/Choice 展开态和条件/动作摘要。
-- **保持不变**：`VisualPassageContentV2`、SugarCube 编译、发布、导入、metadata、地图连线和运行时语义均未修改。
+- **既有模块正确性修复（2026-08-20 当前工作树）**：条件分支的所有非末尾分支均显示条件编辑器，缺条件或引用失效时标记未完成且整块不编译，禁止旧兜底把首分支变为 `<<if 1>>`；多路分支按 SugarCube 2.37.3 的 `switch` 子标签合同移除不存在的 `<</case>>` / `<</default>>`，只有选择状态但没有 case/default 内容时仍标记未完成；`_item` 作用域沿 Branch/Switch 嵌套传递且只在 Loop body 内有效；修改变量仅对 number 提供 `+=/-=`；Choice 切换到返回/后退时清除不可执行动作并显示限制说明。
+- **选择器与命名修复（2026-08-20 当前工作树）**：十种模块正式中文名统一为“文本、选择、条件分支、修改变量、多路分支、循环、变量、引用、交互、原始”；补齐中英文分组、搜索占位、禁用原因等语言键，弹层限制视口宽度并独立纵向滚动。设计文档同步记录同一命名合同。
+- **修复验收**：`npm run lint`、`npx tsc --noEmit`、中英文 JSON 解析通过；编辑器/编译/metadata/运行检查 4 套共 102 个测试通过。本地 Web 真实界面确认中文分组无原始键名和选择器横向滚动，创建变量后“条件分支 → 添加条件”能生成完整条件表单；真实 SugarCube 运行抽屉执行包含 Branch + Switch 的样例未报告运行错误。
+- **保持不变**：`VisualPassageContentV2` schema、发布、导入、metadata 和地图连线未修改；本轮只纠正既有编译语义和编辑约束。
 
 阶段 10 后续切片：
 

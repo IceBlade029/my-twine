@@ -426,16 +426,18 @@
 
 .module-selector {
 	background: var(--background);
+	box-sizing: border-box;
 	border: 1px solid var(--light-gray);
 	border-radius: var(--corner-round);
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 	max-height: 22rem;
-	overflow: auto;
+	overflow-x: hidden;
+	overflow-y: auto;
 	padding: var(--grid-size);
 	position: absolute;
 	top: calc(100% + var(--grid-size));
-	z-index: 20;
-	width: 20rem;
+	z-index: 100;
+	width: min(20rem, calc(100vw - var(--grid-size) - var(--grid-size)));
 	left: 0;
 }
 
@@ -464,6 +466,7 @@
 	margin: 0;
 	font-size: 0.85em;
 	color: var(--gray);
+	overflow-wrap: anywhere;
 }
 
 .module-entry {
@@ -487,6 +490,11 @@
 	font-size: 0.8em;
 	color: var(--gray);
 	grid-column: 1 / -1;
+	overflow-wrap: anywhere;
+}
+
+.error-state {
+	color: var(--danger, #c0392b);
 }
 
 .module-entry.is-disabled {

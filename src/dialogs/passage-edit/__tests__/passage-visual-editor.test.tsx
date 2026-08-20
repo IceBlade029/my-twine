@@ -101,7 +101,7 @@ function renderComponent(setup?: (story: Story) => void) {
  */
 function addModule(labelKey: string) {
 	fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addModule'));
-	fireEvent.click(screen.getByText(labelKey));
+	fireEvent.click(screen.getAllByText(labelKey)[0]);
 }
 
 describe('<PassageVisualEditor>', () => {
@@ -201,7 +201,7 @@ describe('<PassageVisualEditor>', () => {
 		).not.toBeInTheDocument();
 	});
 
-	it('switches a variable block between state and loop item sources', () => {
+	it('disables the loop item source for variable blocks outside loops', () => {
 		const {story} = renderComponent(setup => {
 			setup.visual = {
 				states: [
@@ -227,32 +227,61 @@ describe('<PassageVisualEditor>', () => {
 			screen.queryByText('dialogs.passageEdit.visual.loopItemHint')
 		).not.toBeInTheDocument();
 
-		// Switching to the loop item source hides the state picker, shows the
-		// hint, and compiles to <<print _item>>.
-		fireEvent.change(
-			screen.getByLabelText('dialogs.passageEdit.visual.variableSource'),
-			{target: {value: 'loopItem'}}
-		);
+		const loopOption = screen
+			.getByLabelText('dialogs.passageEdit.visual.variableSource')
+			.querySelector('option[value="loopItem"]');
 
-		expect(
-			screen.queryByLabelText('dialogs.passageEdit.visual.variableState')
-		).not.toBeInTheDocument();
-		expect(
-			screen.getByText('dialogs.passageEdit.visual.loopItemHint')
-		).toBeInTheDocument();
+		expect(loopOption).toBeDisabled();
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
-		).toHaveTextContent('<<print _item>>');
+		).not.toHaveTextContent('<<print _item>>');
+	});
 
-		// Switching back to the state source restores the state picker.
-		fireEvent.change(
-			screen.getByLabelText('dialogs.passageEdit.visual.variableSource'),
-			{target: {value: 'state'}}
+	it('enables and compiles the loop item source inside a loop', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{
+						defaultValue: ['a'],
+						id: 'state-1',
+						name: 'Inventory',
+						type: 'list'
+					}
+				],
+				version: 1
+			};
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						blocks: [
+							{
+								id: 'variable-1',
+								kind: 'variable',
+								source: 'loopItem',
+								stateId: undefined
+							}
+						],
+						id: 'loop-1',
+						kind: 'loop',
+						stateId: 'state-1'
+					}
+				],
+				version: 2
+			};
+		});
+		const source = screen.getByLabelText(
+			'dialogs.passageEdit.visual.variableSource'
 		);
+		const loopOption = source
+			.querySelector('option[value="loopItem"]');
 
+		expect(loopOption).not.toBeDisabled();
+		fireEvent.change(source, {target: {value: 'loopItem'}});
 		expect(
-			screen.getByLabelText('dialogs.passageEdit.visual.variableState')
-		).toBeInTheDocument();
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent(
+			'<<for _item range $Inventory>><<print _item>><</for>>'
+		);
 	});
 
 	it('adds and completes an include block with a passage picker', () => {
@@ -334,10 +363,18 @@ describe('<PassageVisualEditor>', () => {
 
 	it('lets a choice target back or return instead of a passage', () => {
 		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
 			setup.passages[0].visual = {
 				blocks: [
 					{
-						actions: [],
+						actions: [
+							{operation: 'set', stateId: 'state-1', value: 1}
+						],
 						id: 'choice-1',
 						kind: 'choice',
 						label: 'Go back',
@@ -361,9 +398,18 @@ describe('<PassageVisualEditor>', () => {
 			'dialogs.passageEdit.visual.targetReturn'
 		);
 
-		// Selecting them compiles to the back/return macros without a setter.
+		// Selecting them compiles to the back/return macros and hides actions.
 		fireEvent.change(target, {target: {value: 'back'}});
 		expect(passageText()).toHaveTextContent('<<back "Go back">>');
+		expect(passageText()).not.toHaveTextContent('$Trust = 1');
+		expect(
+			screen.getByText(
+				'dialogs.passageEdit.visual.specialTargetActionsUnavailable'
+			)
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText('dialogs.passageEdit.visual.addAction')
+		).not.toBeInTheDocument();
 
 		fireEvent.change(target, {target: {value: 'return'}});
 		expect(passageText()).toHaveTextContent('<<return "Go back">>');
@@ -459,8 +505,8 @@ describe('<PassageVisualEditor>', () => {
 		expect(stateSelect).not.toHaveTextContent('Inventory');
 		fireEvent.change(stateSelect, {target: {value: 'state-1'}});
 		expect(
-			screen.queryByText('dialogs.passageEdit.visual.blockIncomplete')
-		).not.toBeInTheDocument();
+			screen.getByText('dialogs.passageEdit.visual.statusIncomplete')
+		).toBeInTheDocument();
 
 		// Adding a case renders a value input and a nested block list; the
 		// default section is always present.
@@ -481,8 +527,36 @@ describe('<PassageVisualEditor>', () => {
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
 		).toHaveTextContent(
-			'<<switch $Mood>><<case 1>><</case>><</switch>>'
+			'<<switch $Mood>><<case 1>><</switch>>'
 		);
+	});
+
+	it('creates a branch with an editable condition and one final else', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+		});
+
+		addModule('dialogs.passageEdit.visual.blockKindBranch');
+		const addConditionButtons = screen.getAllByText(
+			'dialogs.passageEdit.visual.addCondition'
+		);
+		expect(addConditionButtons.length).toBeGreaterThan(0);
+		expect(
+			screen.getAllByText('dialogs.passageEdit.visual.else')
+		).toHaveLength(1);
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).not.toHaveTextContent('<<if 1>>');
+
+		fireEvent.click(addConditionButtons[addConditionButtons.length - 1]);
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.conditionState')
+		).toBeInTheDocument();
 	});
 
 	it('adds and completes a loop block with a body', () => {
@@ -964,7 +1038,35 @@ describe('condition dual view (P2)', () => {
 });
 
 describe('set block value sources (P2)', () => {
-	it('offers 常量/变量/循环项/自由表达式 sources', () => {
+	it('only offers += and -= for number targets', () => {
+		renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: '', id: 'state-text', name: 'Title', type: 'text'},
+					{defaultValue: 0, id: 'state-number', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+		});
+
+		addModule('dialogs.passageEdit.visual.blockKindSet');
+		const target = screen.getByLabelText(
+			'dialogs.passageEdit.visual.setVariable'
+		);
+		const operation = screen.getByLabelText(
+			'dialogs.passageEdit.visual.setOperation'
+		);
+
+		fireEvent.change(target, {target: {value: 'state-text'}});
+		expect(operation).not.toHaveTextContent('+=');
+		expect(operation).not.toHaveTextContent('-=');
+
+		fireEvent.change(target, {target: {value: 'state-number'}});
+		expect(operation).toHaveTextContent('+=');
+		expect(operation).toHaveTextContent('-=');
+	});
+
+	it('offers value sources but disables 循环项 outside loops', () => {
 		renderComponent(setup => {
 			setup.visual = {
 				states: [
@@ -997,6 +1099,7 @@ describe('set block value sources (P2)', () => {
 		expect(source).toHaveTextContent(
 			'dialogs.passageEdit.visual.valueSourceFreeExpression'
 		);
+		expect(source.querySelector('option[value="loopItem"]')).toBeDisabled();
 
 		// Constant source shows the type-aware literal input.
 		expect(
@@ -1011,12 +1114,6 @@ describe('set block value sources (P2)', () => {
 			),
 			{target: {value: 'state-2'}}
 		);
-
-		// Loop item source shows the hint.
-		fireEvent.change(source, {target: {value: 'loopItem'}});
-		expect(
-			screen.getByText('dialogs.passageEdit.visual.loopItemValueHint')
-		).toBeInTheDocument();
 
 		// Free expression source shows a text input.
 		fireEvent.change(source, {target: {value: 'free'}});

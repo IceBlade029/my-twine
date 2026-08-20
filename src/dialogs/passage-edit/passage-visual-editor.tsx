@@ -49,6 +49,7 @@ import {
 import {useUndoableStoriesContext} from '../../store/undoable-stories';
 import {
 	compileBlockFragment,
+	compileExpression,
 	compileStateInitialization,
 	compileVisualPassage,
 	migrateVisualContent,
@@ -297,20 +298,32 @@ function shortened(value: string, fallback: string, maximum = 72) {
 		: normalized;
 }
 
-function blockIsIncomplete(block: VisualBlock) {
+function blockIsIncomplete(
+	block: VisualBlock,
+	states: VisualStoryState[],
+	insideLoop: boolean
+) {
 	if (block.kind === 'choice') {
 		return (
 			block.label.trim() === '' ||
-			(!block.specialTarget && block.targetPassageId === '')
+			(!block.specialTarget && block.targetPassageId === '') ||
+			(Boolean(block.specialTarget) && block.actions.length > 0)
 		);
 	}
 
 	if (block.kind === 'variable') {
-		return block.source !== 'loopItem' && !block.stateId;
+		return block.source === 'loopItem' ? !insideLoop : !block.stateId;
 	}
 
 	if (block.kind === 'set') {
-		return block.variableId === '';
+		const state = states.find(item => item.id === block.variableId);
+
+		return (
+			!state ||
+			compileExpression(block.value, states) === undefined ||
+			(block.value.kind === 'loopItem' && !insideLoop) ||
+			(block.operation !== '=' && state.type !== 'number')
+		);
 	}
 
 	if (block.kind === 'raw') {
@@ -325,7 +338,14 @@ function blockIsIncomplete(block: VisualBlock) {
 		return block.label.trim() === '';
 	}
 
-	if (block.kind === 'switch' || block.kind === 'loop') {
+	if (block.kind === 'switch') {
+		return (
+			block.stateId === '' ||
+			(block.cases.length === 0 && block.defaultBlocks.length === 0)
+		);
+	}
+
+	if (block.kind === 'loop') {
 		return block.stateId === '';
 	}
 
@@ -742,7 +762,10 @@ function activeBranchIndex(
 		}
 	}
 
-	const elseIndex = branches.findIndex(item => !item.condition);
+	const elseIndex =
+		branches.length > 0 && !branches[branches.length - 1].condition
+			? branches.length - 1
+			: -1;
 
 	return elseIndex >= 0 ? elseIndex : undefined;
 }
@@ -1360,10 +1383,15 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					onChange={event => {
 						const value = event.target.value;
 
-						// Back/return navigate instead of to a passage: they set
-						// specialTarget and clear the passage target.
+						// Back/return cannot execute passage-link setter actions. Clear
+						// them when switching target so the UI never promises work the
+						// SugarCube macro will silently ignore.
 						if (value === 'back' || value === 'return') {
-							onUpdate({specialTarget: value, targetPassageId: ''});
+							onUpdate({
+								actions: [],
+								specialTarget: value,
+								targetPassageId: ''
+							});
 						} else {
 							onUpdate({specialTarget: undefined, targetPassageId: value});
 						}
@@ -1394,9 +1422,14 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					states={states}
 				/>
 			</div>
-			<div className="choice-actions">
-				<span>{t('dialogs.passageEdit.visual.actions')}</span>
-				{(choice.actions ?? []).map((action, actionIndex) => {
+			{choice.specialTarget ? (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.specialTargetActionsUnavailable')}
+				</p>
+			) : (
+				<div className="choice-actions">
+					<span>{t('dialogs.passageEdit.visual.actions')}</span>
+					{(choice.actions ?? []).map((action, actionIndex) => {
 					const state = states.find(item => item.id === action.stateId);
 					return (
 						<div className="action-row" key={actionIndex}>
@@ -1485,8 +1518,8 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 							>×</button>
 						</div>
 					);
-				})}
-				<button
+					})}
+					<button
 					disabled={states.length === 0}
 					onClick={() => {
 						const state = states[0];
@@ -1502,13 +1535,14 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 						});
 					}}
 					type="button"
-				>{t('dialogs.passageEdit.visual.addAction')}</button>
-				{states.length === 0 && (
-					<p className="empty-state">
-						{t('dialogs.passageEdit.visual.noStatesHint')}
-					</p>
-				)}
-			</div>
+					>{t('dialogs.passageEdit.visual.addAction')}</button>
+					{states.length === 0 && (
+						<p className="empty-state">
+							{t('dialogs.passageEdit.visual.noStatesHint')}
+						</p>
+					)}
+				</div>
+			)}
 			{(choice.actions ?? []).length > 0 && (
 				<ul className="choice-actions-summary">
 					{(choice.actions ?? []).map((action, actionIndex) => (
@@ -1525,12 +1559,13 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 interface VariableEditorProps {
 	block: VisualVariableBlock;
 	disabled?: boolean;
+	insideLoop: boolean;
 	onUpdate: (props: Partial<VisualVariableBlock>) => void;
 	states: VisualStoryState[];
 }
 
 const VariableEditor: React.FC<VariableEditorProps> = props => {
-	const {block, disabled, onUpdate, states} = props;
+	const {block, disabled, insideLoop, onUpdate, states} = props;
 	const {t} = useTranslation();
 	const source = block.source ?? 'state';
 
@@ -1551,7 +1586,7 @@ const VariableEditor: React.FC<VariableEditorProps> = props => {
 					<option value="state">
 						{t('dialogs.passageEdit.visual.sourceState')}
 					</option>
-					<option value="loopItem">
+					<option disabled={!insideLoop} value="loopItem">
 						{t('dialogs.passageEdit.visual.sourceLoopItem')}
 					</option>
 				</select>
@@ -1582,9 +1617,16 @@ const VariableEditor: React.FC<VariableEditorProps> = props => {
 					)}
 				</>
 			) : (
-				<p className="empty-state">
-					{t('dialogs.passageEdit.visual.loopItemHint')}
-				</p>
+				<>
+					<p className="empty-state">
+						{t('dialogs.passageEdit.visual.loopItemHint')}
+					</p>
+					{!insideLoop && (
+						<p className="empty-state error-state">
+							{t('dialogs.passageEdit.visual.loopItemOutsideLoop')}
+						</p>
+					)}
+				</>
 			)}
 			<div>
 				<span>{t('dialogs.passageEdit.visual.condition')}</span>
@@ -1601,6 +1643,7 @@ const VariableEditor: React.FC<VariableEditorProps> = props => {
 interface SetBlockEditorProps {
 	block: VisualSetBlock;
 	disabled?: boolean;
+	insideLoop: boolean;
 	onUpdate: (props: Partial<VisualSetBlock>) => void;
 	states: VisualStoryState[];
 }
@@ -1623,7 +1666,7 @@ function setValueSourceOf(expr: VisualExpression): SetValueSource {
 }
 
 const SetBlockEditor: React.FC<SetBlockEditorProps> = props => {
-	const {block, disabled, onUpdate, states} = props;
+	const {block, disabled, insideLoop, onUpdate, states} = props;
 	const {t} = useTranslation();
 	const state = states.find(item => item.id === block.variableId);
 	const source = setValueSourceOf(block.value);
@@ -1645,7 +1688,27 @@ const SetBlockEditor: React.FC<SetBlockEditorProps> = props => {
 				<select
 					aria-label={t('dialogs.passageEdit.visual.setVariable')}
 					disabled={disabled || states.length === 0}
-					onChange={event => onUpdate({variableId: event.target.value})}
+					onChange={event => {
+						const nextState = states.find(
+							item => item.id === event.target.value
+						);
+						const next: Partial<VisualSetBlock> = {
+							variableId: event.target.value
+						};
+
+						if (block.operation !== '=' && nextState?.type !== 'number') {
+							next.operation = '=';
+						}
+
+						if (block.value.kind === 'literal') {
+							next.value = {
+								kind: 'literal',
+								value: stateValuePlaceholder(nextState)
+							};
+						}
+
+						onUpdate(next);
+					}}
 					value={block.variableId}
 				>
 					<option value="">
@@ -1674,8 +1737,8 @@ const SetBlockEditor: React.FC<SetBlockEditorProps> = props => {
 					value={block.operation}
 				>
 					<option value="=">=</option>
-					<option value="+=">+=</option>
-					<option value="-=">-=</option>
+					{state?.type === 'number' && <option value="+=">+=</option>}
+					{state?.type === 'number' && <option value="-=">-=</option>}
 				</select>
 			</label>
 			<label>
@@ -1707,7 +1770,7 @@ const SetBlockEditor: React.FC<SetBlockEditorProps> = props => {
 					<option value="variable">
 						{t('dialogs.passageEdit.visual.valueSourceVariable')}
 					</option>
-					<option value="loopItem">
+					<option disabled={!insideLoop} value="loopItem">
 						{t('dialogs.passageEdit.visual.valueSourceLoopItem')}
 					</option>
 					<option value="free">
@@ -1750,9 +1813,16 @@ const SetBlockEditor: React.FC<SetBlockEditorProps> = props => {
 				</label>
 			)}
 			{source === 'loopItem' && (
-				<p className="empty-state">
-					{t('dialogs.passageEdit.visual.loopItemValueHint')}
-				</p>
+				<>
+					<p className="empty-state">
+						{t('dialogs.passageEdit.visual.loopItemValueHint')}
+					</p>
+					{!insideLoop && (
+						<p className="empty-state error-state">
+							{t('dialogs.passageEdit.visual.loopItemOutsideLoop')}
+						</p>
+					)}
+				</>
 			)}
 			{source === 'free' && (
 				<label>
@@ -2028,6 +2098,7 @@ interface BranchEditorProps {
 	branch: VisualBranchBlock;
 	depth: number;
 	disabled?: boolean;
+	insideLoop: boolean;
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualBranchBlock>) => void;
@@ -2056,6 +2127,7 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 		branch,
 		depth,
 		disabled,
+		insideLoop,
 		onSaveFlushed,
 		onSavePending,
 		onUpdate,
@@ -2116,6 +2188,7 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 		<div className="visual-passage-choice visual-passage-branch">
 			{branch.branches.map((item, index) => {
 				const inactive = active !== undefined && active !== index;
+				const isElse = index === branch.branches.length - 1;
 
 				return (
 					<div
@@ -2123,7 +2196,7 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 						key={item.id}
 					>
 						<div className="branch-condition">
-							{item.condition ? (
+							{!isElse ? (
 								<>
 									<span>{t('dialogs.passageEdit.visual.condition')}</span>
 									<ConditionEditor
@@ -2133,6 +2206,11 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 										}
 										states={states}
 									/>
+									{!item.condition && (
+										<span className="block-status-tag error-status">
+											{t('dialogs.passageEdit.visual.statusIncomplete')}
+										</span>
+									)}
 								</>
 							) : (
 								<span className="else-label">
@@ -2156,6 +2234,7 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 							blocks={item.blocks}
 							depth={depth + 1}
 							disabled={disabled}
+							insideLoop={insideLoop}
 							onChange={blocks => updateBranch(index, {blocks})}
 							onSaveFlushed={onSaveFlushed}
 							onSavePending={onSavePending}
@@ -2178,6 +2257,7 @@ interface SwitchBlockEditorProps {
 	block: VisualSwitchBlock;
 	depth: number;
 	disabled?: boolean;
+	insideLoop: boolean;
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
 	onUpdate: (props: Partial<VisualSwitchBlock>) => void;
@@ -2199,6 +2279,7 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 		block,
 		depth,
 		disabled,
+		insideLoop,
 		onSaveFlushed,
 		onSavePending,
 		onUpdate,
@@ -2289,6 +2370,7 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 							blocks={caseItem.blocks}
 							depth={depth + 1}
 							disabled={disabled}
+							insideLoop={insideLoop}
 							onChange={blocks => updateCase(index, {blocks})}
 							onSaveFlushed={onSaveFlushed}
 							onSavePending={onSavePending}
@@ -2322,6 +2404,7 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 					blocks={block.defaultBlocks}
 					depth={depth + 1}
 					disabled={disabled}
+					insideLoop={insideLoop}
 					onChange={blocks => onUpdate({defaultBlocks: blocks})}
 					onSaveFlushed={onSaveFlushed}
 					onSavePending={onSavePending}
@@ -2413,6 +2496,7 @@ const LoopBlockEditor: React.FC<LoopBlockEditorProps> = props => {
 					blocks={block.blocks}
 					depth={depth + 1}
 					disabled={disabled}
+					insideLoop
 					onChange={blocks => onUpdate({blocks})}
 					onSaveFlushed={onSaveFlushed}
 					onSavePending={onSavePending}
@@ -2444,6 +2528,7 @@ interface BlockShellProps {
 	disabled?: boolean;
 	hidden: boolean;
 	icon: React.ComponentType;
+	insideLoop: boolean;
 	kindLabel: string;
 	onDelete: () => void;
 	onMoveDown: () => void;
@@ -2471,6 +2556,7 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		disabled,
 		hidden,
 		icon,
+		insideLoop,
 		kindLabel,
 		onDelete,
 		onMoveDown,
@@ -2486,11 +2572,11 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 	const collapsed = container && treeView.collapsedContainerIds.has(block.id);
 	const expanded = container ? !collapsed : treeView.expandedBlockIds.has(block.id);
 	const selected = treeView.selectedBlockId === block.id;
-	const incomplete = blockIsIncomplete(block);
+	const incomplete = blockIsIncomplete(block, states, insideLoop);
 	const summary = blockSummaryText(block, states, story, t);
 	const fragment = React.useMemo(
-		() => compileBlockFragment(block, states, story).trim(),
-		[block, states, story]
+		() => compileBlockFragment(block, states, story, undefined, insideLoop).trim(),
+		[block, insideLoop, states, story]
 	);
 
 	return (
@@ -2600,6 +2686,7 @@ interface BlockListProps {
 	blocks: VisualBlock[];
 	depth?: number;
 	disabled?: boolean;
+	insideLoop?: boolean;
 	onChange: (blocks: VisualBlock[]) => void;
 	onSaveFlushed: () => void;
 	onSavePending: () => void;
@@ -2614,6 +2701,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 		blocks,
 		depth = 0,
 		disabled,
+		insideLoop = false,
 		onChange,
 		onSaveFlushed,
 		onSavePending,
@@ -2787,6 +2875,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 						disabled={disabled}
 						hidden={hidden}
 						icon={meta.icon}
+						insideLoop={insideLoop}
 						key={block.id}
 						kindLabel={t(meta.labelKey)}
 						onDelete={() => deleteBlock(index)}
@@ -2827,6 +2916,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 								branch={block}
 								depth={depth}
 								disabled={disabled}
+								insideLoop={insideLoop}
 								onSaveFlushed={onSaveFlushed}
 								onSavePending={onSavePending}
 								onUpdate={props =>
@@ -2842,6 +2932,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 							<VariableEditor
 								block={block}
 								disabled={disabled}
+								insideLoop={insideLoop}
 								onUpdate={props =>
 									updateBlock(block.id, {...block, ...props})
 								}
@@ -2852,6 +2943,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 							<SetBlockEditor
 								block={block}
 								disabled={disabled}
+								insideLoop={insideLoop}
 								onUpdate={props =>
 									updateBlock(block.id, {...block, ...props})
 								}
@@ -2894,6 +2986,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 								block={block}
 								depth={depth}
 								disabled={disabled}
+								insideLoop={insideLoop}
 								onSaveFlushed={onSaveFlushed}
 								onSavePending={onSavePending}
 								onUpdate={props =>

@@ -335,6 +335,13 @@
 				"selectBlockHint": "Click a trace entry to highlight its block in the editor.",
 				"traceUnknownBlock": "unknown block",
 				"addModule": "Add module here",
+				"moduleSearchPlaceholder": "Search module names or technical aliases",
+				"selectorGroupCommon": "Common",
+				"selectorGroupControlFlow": "Control flow",
+				"selectorGroupContentReuse": "Content and reuse",
+				"selectorGroupInteractionActions": "Interactions and actions",
+				"selectorGroupAdvanced": "Advanced",
+				"noListStateSelectorReason": "No list variable exists; create one first.",
 				"advancedSyntaxNote": "This expression uses advanced syntax and can only be edited in expression mode.",
 				"blockCode": "SugarCube",
 				"blockKindSet": "Set variable",
@@ -345,6 +352,7 @@
 				"expressionSymbol": "Expression",
 				"formatNotLoaded": "Story format not loaded; cannot run the test.",
 				"loopItemValueHint": "Shows the current loop item (use inside a for-each block).",
+				"loopItemOutsideLoop": "The loop item can only be used inside a loop module.",
 				"nameConflictWarning": "Name conflict: generated code will use ${{name}}",
 				"readsVariables": "Reads",
 				"setOperation": "Operation",
@@ -368,7 +376,8 @@
 				"moduleTextDescription": "Outputs a passage of text.",
 				"moduleChoiceDescription": "Shows the player a choice that jumps or changes variables on click.",
 				"moduleInteractionDescription": "Reveals, appends, or removes content in place on click.",
-				"moduleVariableDescription": "Shows a variable's or the loop item's current value in the text."
+				"moduleVariableDescription": "Shows a variable's or the loop item's current value in the text.",
+				"specialTargetActionsUnavailable": "Back and return targets do not support variable actions."
 			}
 		},
 		"passageTags": {

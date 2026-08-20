@@ -198,6 +198,7 @@ describe('visual passage utilities', () => {
 		expect(compileExpression({kind: 'free', code: '$x >= 1 && $y'}, states)).toBe(
 			'$x >= 1 && $y'
 		);
+		expect(compileExpression({kind: 'free', code: '   '}, states)).toBeUndefined();
 		expect(compileExpression(v('trust'), states)).toBe('$Trust');
 		// A missing state variable makes the whole expression undefined.
 		expect(compileExpression(v('gone'), states)).toBeUndefined();
@@ -371,7 +372,7 @@ describe('visual passage utilities', () => {
 		).toBe('<<if ($Trust > 5)>><<print $coins>><</if>>');
 	});
 
-	it('compiles loop item variable blocks and keeps state blocks unchanged', () => {
+	it('skips loop item variable blocks outside loops and keeps state blocks unchanged', () => {
 		const story = fakeStory(1);
 		const state = {
 			defaultValue: 0,
@@ -402,10 +403,10 @@ describe('visual passage utilities', () => {
 				story,
 				story.passages[0].id
 			)
-		).toBe('<<print _item>>\n\n<<print $Trust>>');
+		).toBe('<<print $Trust>>');
 	});
 
-	it('wraps loop item variable blocks in their conditions', () => {
+	it('skips conditioned loop item variable blocks outside loops', () => {
 		const story = fakeStory(1);
 		const state = {
 			defaultValue: 0,
@@ -434,7 +435,7 @@ describe('visual passage utilities', () => {
 				story,
 				story.passages[0].id
 			)
-		).toBe('<<if ($Trust > 1)>><<print _item>><</if>>');
+		).toBe('');
 	});
 
 	it('wraps variable and include blocks in their conditions', () => {
@@ -689,6 +690,30 @@ describe('visual passage utilities', () => {
 		).toBe(
 			'<<if ($S == 1)>>[[Go to A->Ending A]]<<else>>Fallback text.<</if>>'
 		);
+	});
+
+	it('skips incomplete branches instead of compiling a leading else as true', () => {
+		const story = fakeStory(1);
+
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{
+							branches: [
+								{blocks: [{id: 'a', kind: 'text', text: 'A'}], id: 'a'},
+								{blocks: [{id: 'b', kind: 'text', text: 'B'}], id: 'b'}
+							],
+							id: 'branch-1',
+							kind: 'branch'
+						}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('');
 	});
 
 	it('compiles list initialization, list actions, and list conditions', () => {
@@ -962,6 +987,35 @@ describe('visual passage utilities', () => {
 				condition: bin('gone', '==', 1)
 			})
 		).toBe('<<set $Trust = 4>>');
+
+		// A loop item is not in scope at passage level.
+		expect(
+			compileSet({
+				id: 'set-8',
+				kind: 'set',
+				operation: '=',
+				variableId: state.id,
+				value: {kind: 'loopItem'}
+			})
+		).toBe('');
+
+		// Numeric operators are rejected for non-number targets.
+		const textState = {
+			defaultValue: 'hello',
+			id: 'title',
+			name: 'Title',
+			type: 'text' as const
+		};
+		story.visual = {states: [state, textState], version: 1};
+		expect(
+			compileSet({
+				id: 'set-9',
+				kind: 'set',
+				operation: '+=',
+				variableId: textState.id,
+				value: {kind: 'literal', value: ' world'}
+			})
+		).toBe('');
 	});
 
 	it('migrates v1 content to v2 losslessly', () => {
@@ -1080,7 +1134,7 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe(
-			'<<switch $Mood>><<case 1>>Happy.<</case>><<case "red">>Red.<</case>><<case true>>Yes.<</case>><<default>>Unknown.<</default>><</switch>>'
+			'<<switch $Mood>><<case 1>>Happy.<<case "red">>Red.<<case true>>Yes.<<default>>Unknown.<</switch>>'
 		);
 	});
 
@@ -1130,7 +1184,7 @@ describe('visual passage utilities', () => {
 				story.passages[0].id
 			)
 		).toBe(
-			'<<if ($Mood == 1)>><<switch $Mood>><<case 1>>[[Leave->Next]]<</case>><</switch>><</if>>'
+			'<<if ($Mood == 1)>><<switch $Mood>><<case 1>>[[Leave->Next]]<</switch>><</if>>'
 		);
 	});
 

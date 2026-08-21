@@ -96,7 +96,8 @@ export type VisualBlock =
 	| VisualIncludeBlock
 	| VisualBranchBlock
 	| VisualSwitchBlock
-	| VisualLoopBlock;
+	| VisualLoopBlock
+	| VisualReturnMainBlock;
 
 export interface VisualTextBlock {
 	kind: 'text';
@@ -224,6 +225,20 @@ export interface VisualLoopBlock {
 	/** List state iterated over. An empty value means the block is incomplete. */
 	stateId: string;
 	blocks: VisualBlock[];
+	condition?: VisualExpression;
+}
+
+/**
+ * A "return to main flow" link. The passage it lives in is treated as a menu
+ * area (the editor tags it `noreturn`); the block records the passage the
+ * player was in before entering the menu area into `$return` and renders a
+ * link back to it, no matter how many menu steps happened in between.
+ */
+export interface VisualReturnMainBlock {
+	kind: 'returnMain';
+	id: string;
+	/** Text shown on the link. An empty value means the block is incomplete. */
+	label: string;
 	condition?: VisualExpression;
 }
 

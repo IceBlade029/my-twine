@@ -43,6 +43,41 @@ export function interactionHookId(blockId: string) {
 	return `nrp_hook_${blockId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 }
 
+/**
+ * True when the block list (recursively, through branches, switch cases, and
+ * loop bodies) contains a block of the given kind.
+ */
+export function blocksContainKind(
+	blocks: VisualBlock[],
+	kind: VisualBlock['kind']
+): boolean {
+	return blocks.some(block => {
+		if (block.kind === kind) {
+			return true;
+		}
+
+		if (block.kind === 'branch') {
+			return block.branches.some(branch =>
+				blocksContainKind(branch.blocks, kind)
+			);
+		}
+
+		if (block.kind === 'switch') {
+			return (
+				block.cases.some(caseItem =>
+					blocksContainKind(caseItem.blocks, kind)
+				) || blocksContainKind(block.defaultBlocks, kind)
+			);
+		}
+
+		if (block.kind === 'loop') {
+			return blocksContainKind(block.blocks, kind);
+		}
+
+		return false;
+	});
+}
+
 function sugarCubeValue(value: boolean | number | string | string[]) {
 	// JSON.stringify serializes string arrays as SugarCube array literals.
 	return JSON.stringify(value);
@@ -522,6 +557,31 @@ function compileBlocks(
 				: undefined;
 
 			output.push(mark(withTraceCondition(code, condition)));
+			return output;
+		}
+
+		// A return-main block records the passage the player was in before
+		// entering this menu area (a passage tagged `noreturn`, see the
+		// editor's auto-tagging) into `$return`, then renders a link back to
+		// it. Inside a menu area the tag check keeps the original entry.
+		// The separate-argument <<link>> form yields the variable's value (the
+		// link-markup form would target the literal "$return" passage).
+		if (block.kind === 'returnMain') {
+			const label = block.label.trim();
+
+			if (!label) {
+				return output;
+			}
+
+			const capture =
+				`<<if State.length > 1 and not Story.get(State.history[State.length - 2].title).tags.includes("noreturn")>>` +
+				`<<set $return = State.history[State.length - 2].title>><</if>>`;
+			const link = `<<link ${JSON.stringify(label)} $return>><</link>>`;
+			const condition = block.condition
+				? compileExpression(block.condition, states)
+				: undefined;
+
+			output.push(mark(withTraceCondition(`${capture}${link}`, condition)));
 			return output;
 		}
 

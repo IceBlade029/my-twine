@@ -396,6 +396,15 @@ function stripStateReferences(
 			};
 		}
 
+		// A return-main block is like an interaction block: only its condition
+		// is stripped; the block itself survives.
+		if (block.kind === 'returnMain') {
+			return {
+				...block,
+				condition: stripCondition(block.condition, statesById)
+			};
+		}
+
 		// A switch block names the state it switches on: a deleted state makes
 		// the block incomplete. Nested case/default blocks are stripped
 		// recursively like any other block list.

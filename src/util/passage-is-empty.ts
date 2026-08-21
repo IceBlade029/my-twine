@@ -34,6 +34,10 @@ function blocksHaveContent(blocks: VisualBlock[]): boolean {
 			return block.label !== '' || block.content !== '';
 		}
 
+		if (block.kind === 'returnMain') {
+			return block.label !== '';
+		}
+
 		// A switch or loop block counts as content once it names a state, like
 		// a variable block; its nested blocks are not considered on their own.
 		if (block.kind === 'switch' || block.kind === 'loop') {

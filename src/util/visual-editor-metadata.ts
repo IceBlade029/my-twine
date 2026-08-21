@@ -9,6 +9,7 @@ import {
 	VisualInteractionBlock,
 	VisualLoopBlock,
 	VisualRawBlock,
+	VisualReturnMainBlock,
 	VisualSetBlock,
 	VisualStoryContentV1,
 	VisualSwitchBlock,
@@ -67,7 +68,8 @@ type SerializedBlock =
 	| SerializedIncludeBlock
 	| SerializedBranchBlock
 	| SerializedSwitchBlock
-	| SerializedLoopBlock;
+	| SerializedLoopBlock
+	| VisualReturnMainBlock;
 
 interface SerializedPassageV1 {
 	body: string;
@@ -129,6 +131,11 @@ function serializeBlockList(
 
 		// Raw blocks hold verbatim SugarCube: serialize verbatim.
 		if (block.kind === 'raw') {
+			return block;
+		}
+
+		// Return-main blocks hold no passage references: serialize verbatim.
+		if (block.kind === 'returnMain') {
 			return block;
 		}
 
@@ -256,6 +263,11 @@ function restoreBlockList(
 
 		// Raw blocks hold verbatim SugarCube: restore verbatim.
 		if (block.kind === 'raw') {
+			return block;
+		}
+
+		// Return-main blocks hold no passage references: restore verbatim.
+		if (block.kind === 'returnMain') {
 			return block;
 		}
 

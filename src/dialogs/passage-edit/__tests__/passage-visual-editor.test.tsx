@@ -136,6 +136,55 @@ describe('<PassageVisualEditor>', () => {
 		).toHaveTextContent('[[Leave->Hallway]]');
 	});
 
+	it('adds a return-main block, tags the passage noreturn, and compiles its link', () => {
+		const {story} = renderComponent();
+		const passageNode = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+		const passageTags = () =>
+			document
+				.querySelector(`[data-name="${story.passages[0].name}"]`)
+				?.getAttribute('data-tags');
+
+		addModule('dialogs.passageEdit.visual.blockKindReturnMain');
+
+		// The block alone is incomplete until it gets a label, but the passage
+		// is already tagged as a menu area.
+		expect(passageTags()).toContain('noreturn');
+
+		const label = screen.getByLabelText(
+			'dialogs.passageEdit.visual.returnMainLabel'
+		);
+
+		fireEvent.change(label, {target: {value: '回去主流程'}});
+
+		expect(passageNode()).toHaveTextContent(
+			'<<if State.length > 1 and not Story.get(State.history[State.length - 2].title).tags.includes("noreturn")>><<set $return = State.history[State.length - 2].title>><</if>><<link "回去主流程" $return>><</link>>'
+		);
+	});
+
+	it('removes the noreturn tag when the last return-main block is deleted', () => {
+		const {story} = renderComponent(setup => {
+			setup.passages[0].visual = {
+				blocks: [
+					{id: 'rm-1', kind: 'returnMain', label: '回去主流程'}
+				],
+				version: 2
+			};
+			setup.passages[0].tags = ['noreturn'];
+		});
+		const passageTags = () =>
+			document
+				.querySelector(`[data-name="${story.passages[0].name}"]`)
+				?.getAttribute('data-tags');
+
+		expect(passageTags()).toContain('noreturn');
+
+		// Delete the block (the compact shell exposes the delete button).
+		fireEvent.click(screen.getByLabelText('Delete block'));
+
+		expect(passageTags()).not.toContain('noreturn');
+	});
+
 	it('adds and completes a variable block with a state picker', () => {
 		const {story} = renderComponent(setup => {
 			setup.visual = {

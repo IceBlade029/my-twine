@@ -1,5 +1,6 @@
 import {v4 as uuid} from '@lukeed/uuid';
 import {
+	IconArrowBack,
 	IconArrowDown,
 	IconArrowsRight,
 	IconArrowsSplit,
@@ -38,6 +39,7 @@ import {
 	VisualPassageContent,
 	VisualPassageContentV2,
 	VisualRawBlock,
+	VisualReturnMainBlock,
 	VisualSetBlock,
 	VisualStateAction,
 	VisualStoryState,
@@ -49,6 +51,7 @@ import {
 } from '../../store/stories';
 import {useUndoableStoriesContext} from '../../store/undoable-stories';
 import {
+	blocksContainKind,
 	compileBlockFragment,
 	compileExpression,
 	compileStateInitialization,
@@ -112,6 +115,10 @@ const blockKindMeta: Record<VisualBlock['kind'], BlockKindMeta> = {
 	loop: {
 		icon: IconRepeat,
 		labelKey: 'dialogs.passageEdit.visual.blockKindLoop'
+	},
+	returnMain: {
+		icon: IconArrowBack,
+		labelKey: 'dialogs.passageEdit.visual.blockKindReturnMain'
 	}
 };
 
@@ -207,6 +214,13 @@ const moduleGroups: {titleKey: string; entries: ModuleEntry[]}[] = [
 				aliases: ['reveal', 'append', 'remove', 'link', 'interaction'],
 				descriptionKey:
 					'dialogs.passageEdit.visual.moduleInteractionDescription'
+			},
+			{
+				kind: 'returnMain',
+				labelKey: 'dialogs.passageEdit.visual.blockKindReturnMain',
+				aliases: ['return', 'back', 'noreturn', 'menu', 'back to main'],
+				descriptionKey:
+					'dialogs.passageEdit.visual.moduleReturnMainDescription'
 			}
 		]
 	},
@@ -339,6 +353,10 @@ function blockIsIncomplete(
 		return block.label.trim() === '';
 	}
 
+	if (block.kind === 'returnMain') {
+		return block.label.trim() === '';
+	}
+
 	if (block.kind === 'switch') {
 		return (
 			block.stateId === '' ||
@@ -410,6 +428,10 @@ function blockSummaryText(
 					? 'dialogs.passageEdit.visual.operationAppend'
 					: 'dialogs.passageEdit.visual.interactionOperationRemove'
 		)}`;
+	}
+
+	if (block.kind === 'returnMain') {
+		return `↩ ${shortened(block.label, empty, 42)}`;
 	}
 
 	if (block.kind === 'branch') {
@@ -2516,6 +2538,51 @@ const InteractionBlockEditor: React.FC<InteractionBlockEditorProps> = props => {
 	);
 };
 
+interface ReturnMainEditorProps {
+	block: VisualReturnMainBlock;
+	disabled?: boolean;
+	onUpdate: (props: Partial<VisualReturnMainBlock>) => void;
+	states: VisualStoryState[];
+}
+
+const ReturnMainEditor: React.FC<ReturnMainEditorProps> = props => {
+	const {block, disabled, onUpdate, states} = props;
+	const {t} = useTranslation();
+
+	return (
+		<div className="visual-passage-return-main">
+			<label>
+				<span>{t('dialogs.passageEdit.visual.returnMainLabel')}</span>
+				<input
+					aria-label={t('dialogs.passageEdit.visual.returnMainLabel')}
+					disabled={disabled}
+					onChange={event => onUpdate({label: event.target.value})}
+					placeholder={t(
+						'dialogs.passageEdit.visual.returnMainLabelPlaceholder'
+					)}
+					value={block.label}
+				/>
+			</label>
+			<p className="empty-state">
+				{t('dialogs.passageEdit.visual.returnMainNote')}
+			</p>
+			{block.label.trim() === '' && (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.blockIncomplete')}
+				</p>
+			)}
+			<div>
+				<span>{t('dialogs.passageEdit.visual.condition')}</span>
+				<ConditionEditor
+					condition={block.condition}
+					onChange={condition => onUpdate({condition})}
+					states={states}
+				/>
+			</div>
+		</div>
+	);
+};
+
 interface BranchEditorProps {
 	branch: VisualBranchBlock;
 	depth: number;
@@ -3250,6 +3317,13 @@ const BlockList: React.FC<BlockListProps> = props => {
 		]);
 	}
 
+	function addReturnMainBlock() {
+		onChange([
+			...blocks,
+			{id: uuid(), kind: 'returnMain', label: ''}
+		]);
+	}
+
 	/** Inserts a fresh block of the given kind at the end of the list. */
 	function insertModule(kind: VisualBlock['kind']) {
 		if (kind === 'text') {
@@ -3272,6 +3346,8 @@ const BlockList: React.FC<BlockListProps> = props => {
 			addSwitchBlock();
 		} else if (kind === 'loop') {
 			addLoopBlock();
+		} else if (kind === 'returnMain') {
+			addReturnMainBlock();
 		}
 	}
 
@@ -3395,6 +3471,16 @@ const BlockList: React.FC<BlockListProps> = props => {
 						)}
 						{block.kind === 'interaction' && (
 							<InteractionBlockEditor
+								block={block}
+								disabled={disabled}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+							/>
+						)}
+						{block.kind === 'returnMain' && (
+							<ReturnMainEditor
 								block={block}
 								disabled={disabled}
 								onUpdate={props =>
@@ -3724,8 +3810,19 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 			content: VisualPassageContentV2,
 			description = 'undoChange.editPassage'
 		) => {
+			// A passage that holds a return-main block is a menu area: it gets
+			// the `noreturn` tag (the convention the block's compiled capture
+			// reads), which is dropped again once the last such block is gone.
+			const hasReturnMain = blocksContainKind(content.blocks, 'returnMain');
+			const tags = hasReturnMain
+				? passage.tags.includes('noreturn')
+					? passage.tags
+					: [...passage.tags, 'noreturn']
+				: passage.tags.filter(tag => tag !== 'noreturn');
+
 			dispatch(
 				updatePassage(story, passage, {
+					tags,
 					text: compileVisualPassage(content, story, passage.id),
 					visual: content
 				}),

@@ -200,6 +200,38 @@ describe('visual editor HTML metadata', () => {
 		});
 	});
 
+	it('round trips return-main blocks through HTML', () => {
+		const story = fakeStory(2);
+
+		story.visual = {states: [], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Next';
+		story.passages[0].visual = {
+			blocks: [
+				{
+					id: 'rm-1',
+					kind: 'returnMain',
+					label: '回去主流程'
+				}
+			],
+			version: 2
+		};
+		story.passages[0].text = compileVisualPassage(
+			story.passages[0].visual,
+			story,
+			story.passages[0].id
+		);
+		const [restored] = importStories(
+			publishStory(story, fakeAppInfo(), {startOptional: true})
+		);
+
+		expect(restored.visual).toEqual(story.visual);
+		expect(restored.passages[0].text).toBe(story.passages[0].text);
+		expect(
+			((restored.passages[0].visual as VisualPassageContentV2).blocks[0] as VisualChoiceBlock)
+		).toMatchObject({id: 'rm-1', kind: 'returnMain', label: '回去主流程'});
+	});
+
 	it('round trips variable and include blocks, remapping include targets by name', () => {
 		const story = fakeStory(3);
 		const state = {

@@ -279,6 +279,58 @@ describe('visual passage utilities', () => {
 		);
 	});
 
+	it('compiles return-main blocks into capture and a dynamic link', () => {
+		const story = fakeStory(1);
+		const content: VisualPassageContentV2 = {
+			blocks: [
+				{id: 'rm-1', kind: 'returnMain', label: '回去主流程'}
+			],
+			version: 2
+		};
+
+		expect(
+			compileVisualPassage(content, story, story.passages[0].id)
+		).toBe(
+			'<<if State.length > 1 and not Story.get(State.history[State.length - 2].title).tags.includes("noreturn")>><<set $return = State.history[State.length - 2].title>><</if>><<link "回去主流程" $return>><</link>>'
+		);
+	});
+
+	it('gates return-main blocks in their conditions and skips empty labels', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: false,
+			id: 'menu-open',
+			name: 'Menu open',
+			type: 'boolean' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[1].name = 'Next';
+		const content: VisualPassageContentV2 = {
+			blocks: [
+				{
+					condition: {
+						kind: 'binary',
+						operator: '==',
+						left: {kind: 'variable', variableId: state.id},
+						right: {kind: 'literal', value: true}
+					},
+					id: 'rm-1',
+					kind: 'returnMain',
+					label: '回去'
+				},
+				{id: 'rm-2', kind: 'returnMain', label: '   '}
+			],
+			version: 2
+		};
+
+		expect(
+			compileVisualPassage(content, story, story.passages[0].id)
+		).toBe(
+			'<<if ($Menu_open == true)>><<if State.length > 1 and not Story.get(State.history[State.length - 2].title).tags.includes("noreturn")>><<set $return = State.history[State.length - 2].title>><</if>><<link "回去" $return>><</link>><</if>>'
+		);
+	});
+
 	it('compiles expression nodes across all operators', () => {
 		const states = [
 			{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number' as const},

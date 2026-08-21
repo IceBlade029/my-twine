@@ -184,6 +184,48 @@ describe('<StoryStatesManager>', () => {
 		).not.toHaveTextContent(/count|<<if/);
 	});
 
+	it('strips a return-main block condition referencing a deleted state', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'state-1', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: cond('==', 'state-1', 1),
+						id: 'rm-1',
+						kind: 'returnMain',
+						label: '回去主流程'
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent(/<<if \(\$Trust == 1\)>>/);
+
+		// Deleting the state strips the condition wrapper but keeps the block
+		// and its link.
+		fireEvent.click(screen.getByText('×'));
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).not.toHaveTextContent('$Trust');
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('<<link "回去主流程" $return>><</link>>');
+	});
+
 	it('strips an interaction block condition referencing a deleted state', () => {
 		const story = renderComponent(story => {
 			story.visual = {

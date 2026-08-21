@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：背包系统 + 物品合成系统纵向切片已完成（见下文「背包与合成系统（阶段 10 之外的新功能）」），提交 hash 以 `git log` 为准。此前：时间系统纵向切片已完成（见下文「时间系统」）。阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并由提交 `d48a6fad` 修正普通模块展开合同；随后一轮既有模块正确性修复：条件分支恢复条件入口且不再把未完成分支编译成永真，多路分支改为 SugarCube 正确子标签语法，循环项限定在循环作用域，修改变量限制数字增减，选择的返回目标不再保留不可执行动作，模块选择器补齐中文分组并适配窄面板。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：「回去主流程」模块已完成（见下文「回去主流程模块（阶段 10 之外的新功能）」），提交 hash 以 `git log` 为准。此前：背包与合成系统纵向切片已完成（见下文「背包与合成系统」）；时间系统纵向切片已完成（见下文「时间系统」）。阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并由提交 `d48a6fad` 修正普通模块展开合同；随后一轮既有模块正确性修复：条件分支恢复条件入口且不再把未完成分支编译成永真，多路分支改为 SugarCube 正确子标签语法，循环项限定在循环作用域，修改变量限制数字增减，选择的返回目标不再保留不可执行动作，模块选择器补齐中文分组并适配窄面板。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -348,6 +348,23 @@
 1. **10B**：强化 If/Switch 的分叉视觉语法与“满足/否则”标识；相邻 Choice 只做视觉分组，不增加 `choiceGroup` schema。
 2. **10C**：把末尾追加改为任意合法位置 `insertAt(index)`；统一拖拽手柄并保留上移/下移与键盘移动，首版限制在同一 `BlockList` 内。
 3. **10D**：补齐引用视图、固定复杂验收段落和阶段 10 全部 7 类截图；复核真实 SugarCube、metadata round-trip 与地图连线不变。
+
+### 回去主流程模块（阶段 10 之外的新功能，已完成）
+
+> 需求（用户）：玩家通过侧边菜单进入菜单区片段（如背包）并做了多步操作后，无法回到进入前的片段。核实结论：`noreturn` 不是 Twine/SugarCube 内置机制（全量搜索源码 0 处），而是官方 SugarCube 文档《Arbitrarily long return》建议中的**约定标签名**，配合记录 `$return` 变量的脚本才能生效；官方原文明确 `<<return>>` 宏与 `[[Return|previous()]]` 对多步菜单场景无效。本模块即该官方建议的可视化封装。
+
+完成情况（提交见 `git log`）：
+
+- **新块类型 `returnMain`「回去主流程」**：字段 = label（默认占位「回去主流程」，空则未完成）+ 可选条件；模块选择器入口（交互动作组，别名 return/back/noreturn/menu）、图标 IconArrowBack、摘要 `↩ label`、编辑器表单（链接文字 + 条件 + 说明文案）。
+- **自动打 `noreturn` 标签**：编辑器保存管线（`updateVisual`）递归扫描块树，含 returnMain 块的片段自动带上 `noreturn` 标签（地图卡片可见），最后一个此类块删除后自动摘除。
+- **编译产物**（对齐官方 `$return` 变量 + `noreturn` 约定）：
+  ```
+  <<if State.length > 1 and not Story.get(State.history[State.length - 2].title).tags.includes("noreturn")>><<set $return = State.history[State.length - 2].title>><</if>><<link "回去主流程" $return>><</link>>
+  ```
+  渲染时若上一个片段不是菜单区（无 `noreturn` 标签）→ 记录入口到 `$return`；菜单区内跳转不覆盖；链接用 `<<link>>` 分离参数形式（官方推荐的 Twine 2 写法）——实测 `[[文字|$return]]` 链接形式会把目标解析成字面 `$return` 并触发地图/发布端自动建一个 `$return` 空片段（官方文档的 Twine 2 警告，已验证），`<<link>>` 形式无此问题且正确跳转。
+- **消费方**：metadata 原样 round-trip（无片段引用，同交互块）；`stripStateReferences` 删除状态时剥条件、保留块；`passage-is-empty` 有 label 即算内容；编译/模拟器条件门照常。
+- **验收**：`npm run lint`、`npx tsc --noEmit` 通过；相关 jest 全绿（visual-passage 44、visual-editor-metadata 12、passage-visual-editor 59、story-states-manager 15/16——剩余 1 个失败为既有 `leaves loop item variable blocks untouched`，原始 HEAD 同样失败，非本次引入）；Web 实测（Playwright）：建 4 片段故事（主流程 A + 背包 + 工具 + 主流程 B），背包/工具加「回去主流程」模块 → 地图卡片自动出现 noreturn 标签且无 `$return` 空片段 → 发布试玩：A→背包→工具→回去主流程 回到 A；B→背包→工具→回去主流程 回到 B（每次入口重新记录）。
+- **保持不变**：`VisualPassageContentV2` schema 版本、发布/导入 metadata 结构、时间/背包系统行为。
 
 ### 背包与合成系统（阶段 10 之外的新功能，已完成）
 

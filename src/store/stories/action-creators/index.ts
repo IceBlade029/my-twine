@@ -1,4 +1,5 @@
 export * from './create-newly-linked-passages';
+export * from './create-backpack-system';
 export * from './create-special-passage';
 export * from './create-story';
 export * from './create-time-system';

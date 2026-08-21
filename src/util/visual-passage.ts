@@ -87,6 +87,19 @@ export function compileExpression(
 
 			return state ? visualStateVariable(state) : undefined;
 		}
+		case 'count': {
+			// Counts occurrences of the item value in a list state, e.g. the
+			// material count behind a crafting recipe.
+			const state = states.find(item => item.id === expr.variableId);
+
+			if (!state || state.type !== 'list') {
+				return undefined;
+			}
+
+			return `(${visualStateVariable(state)}).count(${JSON.stringify(
+				expr.value
+			)})`;
+		}
 		case 'unary': {
 			const operand = compileExpression(expr.operand, states);
 

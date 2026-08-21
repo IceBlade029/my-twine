@@ -144,6 +144,62 @@ describe('visual editor HTML metadata', () => {
 		expect(restored.passages[0].text).toBe(story.passages[0].text);
 	});
 
+	it('round trips count conditions in block gates through HTML', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: [],
+			id: 'met-backpack',
+			name: 'backpack',
+			type: 'list' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Next';
+		story.passages[0].visual = {
+			blocks: [
+				{
+					condition: {
+						kind: 'binary',
+						operator: '>=',
+						left: {
+							kind: 'count',
+							variableId: state.id,
+							value: '药草'
+						},
+						right: {kind: 'literal', value: 2}
+					},
+					id: 'choice-1',
+					kind: 'choice',
+					actions: [],
+					label: '合成木弓',
+					targetPassageId: story.passages[1].id
+				}
+			],
+			version: 2
+		};
+		story.passages[0].text = compileVisualPassage(
+			story.passages[0].visual,
+			story,
+			story.passages[0].id
+		);
+		const [restored] = importStories(
+			publishStory(story, fakeAppInfo(), {startOptional: true})
+		);
+
+		expect(restored.visual).toEqual(story.visual);
+		expect(restored.passages[0].text).toBe(story.passages[0].text);
+		expect(
+			((restored.passages[0].visual as VisualPassageContentV2).blocks[0] as VisualChoiceBlock)
+				.condition
+		).toEqual({
+			kind: 'binary',
+			operator: '>=',
+			left: {kind: 'count', variableId: state.id, value: '药草'},
+			right: {kind: 'literal', value: 2}
+		});
+	});
+
 	it('round trips variable and include blocks, remapping include targets by name', () => {
 		const story = fakeStory(3);
 		const state = {

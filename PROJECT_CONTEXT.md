@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：时间系统纵向切片已完成（见下文「时间系统（阶段 10 之外的新功能）」），提交 hash 以 `git log` 为准。此前：阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并由提交 `d48a6fad` 修正普通模块展开合同；随后一轮既有模块正确性修复：条件分支恢复条件入口且不再把未完成分支编译成永真，多路分支改为 SugarCube 正确子标签语法，循环项限定在循环作用域，修改变量限制数字增减，选择的返回目标不再保留不可执行动作，模块选择器补齐中文分组并适配窄面板。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：背包系统 + 物品合成系统纵向切片已完成（见下文「背包与合成系统（阶段 10 之外的新功能）」），提交 hash 以 `git log` 为准。此前：时间系统纵向切片已完成（见下文「时间系统」）。阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并由提交 `d48a6fad` 修正普通模块展开合同；随后一轮既有模块正确性修复：条件分支恢复条件入口且不再把未完成分支编译成永真，多路分支改为 SugarCube 正确子标签语法，循环项限定在循环作用域，修改变量限制数字增减，选择的返回目标不再保留不可执行动作，模块选择器补齐中文分组并适配窄面板。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -349,6 +349,20 @@
 2. **10C**：把末尾追加改为任意合法位置 `insertAt(index)`；统一拖拽手柄并保留上移/下移与键盘移动，首版限制在同一 `BlockList` 内。
 3. **10D**：补齐引用视图、固定复杂验收段落和阶段 10 全部 7 类截图；复核真实 SugarCube、metadata round-trip 与地图连线不变。
 
+### 背包与合成系统（阶段 10 之外的新功能，已完成）
+
+> 需求（用户）：背包系统 + 物品合成系统。已定案：物品 = 名字文本（`backpack` list 状态，重复项 = 堆叠数量，每项一行显示）；合成 = 现有「选择」块组合（条件写数量检查，动作写消耗+获得），不新建配方表/领域模型；数量检查只做「≥ N」；获得/消耗物品做成 UI 模板（数据层仍是 push/remove）。
+
+完成情况（提交见 `git log`）：
+
+- **一键创建背包系统**（工具栏新按钮「背包系统」，背包图标，位于「时间系统」旁）：单个 `updateStory` 动作（可整体撤销）——补齐 `backpack` list 状态（默认 `[]`，按名判重）；缺 StoryInit 时创建并让初始化块归位（`<<if ndef $backpack>><<set $backpack = []>><</if>>`）；创建「背包」段落（文本块 + 循环块遍历 backpack + 变量 loopItem 块，每项一行，重复项显示多行）；生成/追加 StoryMenu 入口「背包」（StoryMenu 已存在且含可视化时追加文本块并重编译，源码模式直接拼文本，链接判重不重复加）。已存在时重复点击改为高亮「背包」段落。
+- **物品动作 UI 模板**（选择块动作区）：物品动作下拉（获得物品 / 消耗物品）+ 物品名输入 + 「添加」按钮 → 生成现有 `push` / `remove` 动作（指向 backpack 状态）；无 backpack 状态时显示提示且按钮禁用；`actionSentenceText` 对名为 backpack 的状态的 push/remove 渲染为「点击后：背包获得『药草』」/「消耗」。
+- **count 表达式节点**：`VisualExpression` 新增 `{kind:'count', variableId, value}` → 编译 `($backpack).count("药草")`；仅经条件编辑器暴露「数量 ≥ N」一行（list 状态专用，编译 `($backpack).count(...) >= N`）；模拟器 `evaluateExpression` 支持 count（按模拟列表值数出现次数）；`stripStateReferences`/`isExpressionCompatible` 按 list 状态兼容处理、状态删除时剥掉 count 条件；metadata 原样 round-trip。
+- **条件编辑器 AND 链**：builder 模式支持多条件行（存为结构化 `&&` 嵌套，不再踢到表达式模式）；「且添加条件」加行、每行可删；行类型 = 普通比较 或 count 数量行（切换到「数量 ≥」时行形态变为 物品名 + 阈值输入，阈值 >=1）；句子渲染「当【backpack】中『药草』数量 ≥ 2时」，AND 链用「且」连接各句。
+- **合成用法**（作者侧，零新块）：选择块条件 = 多行 AND（如 药草数量≥2 且 树枝数量≥1），动作 = 消耗物品 ×N + 获得物品 ×1；材料不足时选项不渲染（SugarCube 条件天然隐藏）。
+- **验收**：`npm run lint`、`npx tsc --noEmit` 通过；相关 jest 全绿（visual-passage 42、visual-editor-metadata 11、create-backpack-system 8 新增、create-time-system 9、passage-visual-editor 57、story-states-manager 14/15——剩余 1 个失败为既有 `leaves loop item variable blocks untouched`，原始 HEAD 同样失败，非本次引入）；Web 实测（Playwright）：一键创建背包 → 三个选择块（采集药草/采集树枝/合成木弓）→ 物品模板加获得动作 → 条件编辑器配 2 行 AND count 条件 → 消耗×2药草+×1树枝、获得木弓 → 生成源码 `<<if ((($backpack).count("药草") >= 2) && (($backpack).count("树枝") >= 1))>>[[合成木弓->未命名片段][$backpack.delete("药草"); $backpack.delete("药草"); $backpack.delete("树枝"); $backpack.push("木弓")]]<</if>>` → 发布试玩：初始合成选项隐藏 → 采 2 药草 1 树枝后出现 → 点击合成 → 菜单「背包」显示「木弓」且材料清空（`backpack` 状态 = `["木弓"]`）。
+- **保持不变**：`VisualPassageContentV2` schema 版本、发布/导入 metadata 结构（count 表达式与 AND 链随表达式原样往返）。
+
 ### 时间系统（阶段 10 之外的新功能，已完成）
 
 > 需求（用户）：游戏时间系统——一天分六个时段【清晨、上午、中午、下午、夜晚、深夜】；玩家触发部分选项/动作后推进时段；系统记录天数。已定案：时间推进**不自动发生**，由作者在每个「选择」上自由决定是否推进、推进几步；一键创建引擎代码；仅选择块可触发推进。
@@ -437,7 +451,9 @@
 | `src/dialogs/story-states/story-states-dialog.tsx` | 故事状态对话框（故事级，工具栏按钮打开） |
 | `src/routes/story-edit/toolbar/story-states-button.tsx` | 工具栏「故事状态」入口按钮 |
 | `src/routes/story-edit/toolbar/create-time-system-button.tsx` | 工具栏「时间系统」一键创建按钮 |
+| `src/routes/story-edit/toolbar/create-backpack-system-button.tsx` | 工具栏「背包系统」一键创建按钮 |
 | `src/store/stories/action-creators/create-time-system.ts` | 时间系统一键创建（day/period 状态 + StoryInit + story.script 引擎 + StoryCaption，单动作可撤销） |
+| `src/store/stories/action-creators/create-backpack-system.ts` | 背包系统一键创建（backpack 状态 + StoryInit + 背包段落 + StoryMenu 入口，单动作可撤销） |
 | `src/dialogs/passage-edit/passage-edit-contents.tsx` | 图形/源码编辑器分流 |
 | `src/dialogs/passage-edit/passage-edit-stack.tsx` | 单段落停靠式编辑栈 |
 | `src/dialogs/context/action-creators.ts` | 打开段落编辑器的对话框动作 |

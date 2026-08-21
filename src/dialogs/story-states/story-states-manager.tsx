@@ -194,7 +194,7 @@ export function isExpressionCompatible(
 
 	if (
 		expr.kind !== 'binary' ||
-		expr.left.kind !== 'variable' ||
+		(expr.left.kind !== 'variable' && expr.left.kind !== 'count') ||
 		expr.right.kind !== 'literal'
 	) {
 		return true;
@@ -209,6 +209,11 @@ export function isExpressionCompatible(
 	}
 
 	if (expr.operator === 'includes' || expr.operator === 'notIncludes') {
+		return state.type === 'list';
+	}
+
+	// A count comparison counts items of a list state.
+	if (expr.left.kind === 'count') {
 		return state.type === 'list';
 	}
 
@@ -231,6 +236,8 @@ export function expressionReferencesVariable(
 		case 'free':
 			return false;
 		case 'variable':
+			return expr.variableId === stateId;
+		case 'count':
 			return expr.variableId === stateId;
 		case 'unary':
 			return expressionReferencesVariable(expr.operand, stateId);
@@ -292,8 +299,12 @@ function collectStructuredVariableIds(
 	switch (expr.kind) {
 		case 'literal':
 		case 'loopItem':
+		case 'free':
 			return true;
 		case 'variable':
+			output.push(expr.variableId);
+			return true;
+		case 'count':
 			output.push(expr.variableId);
 			return true;
 		case 'unary':
@@ -303,9 +314,6 @@ function collectStructuredVariableIds(
 				collectStructuredVariableIds(expr.left, output) &&
 				collectStructuredVariableIds(expr.right, output)
 			);
-		case 'free':
-		default:
-			return false;
 	}
 }
 

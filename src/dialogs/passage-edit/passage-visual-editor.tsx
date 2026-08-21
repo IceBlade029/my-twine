@@ -23,6 +23,7 @@ import * as React from 'react';
 import {useTranslation} from 'react-i18next';
 import {IconButton} from '../../components/control/icon-button';
 import {
+	BACKPACK_STATE_NAME,
 	Passage,
 	Story,
 	VisualBinaryOperator,
@@ -510,6 +511,11 @@ export function expressionToText(
 
 			return state?.name ?? '?';
 		}
+		case 'count': {
+			const state = states.find(item => item.id === expr.variableId);
+
+			return `${state?.name ?? '?'} count ${String(expr.value)}`;
+		}
 		case 'unary':
 			return `!${expressionToText(expr.operand, states)}`;
 		case 'binary': {
@@ -563,6 +569,15 @@ function evalExpr(
 			const state = states.find(item => item.id === expr.variableId);
 
 			return state ? (state.defaultValue as boolean | number | string | string[]) : undefined;
+		}
+		case 'count': {
+			const state = states.find(item => item.id === expr.variableId);
+			const list =
+				simulated[expr.variableId] ?? state?.defaultValue;
+
+			return Array.isArray(list)
+				? list.filter(item => item === expr.value).length
+				: undefined;
 		}
 		case 'unary': {
 			const operand = evalExpr(expr.operand, states, simulated);
@@ -642,10 +657,7 @@ export function conditionSentenceText(
 	condition: VisualExpression,
 	states: VisualStoryState[]
 ) {
-	return t(
-		'dialogs.passageEdit.visual.conditionSentence',
-		conditionInterpolation(t, condition, states)
-	);
+	return conditionSentence(t, condition, states, false);
 }
 
 /** Annotation shown on blocks hidden by the simulator. */
@@ -654,9 +666,40 @@ export function hiddenBecauseText(
 	condition: VisualExpression,
 	states: VisualStoryState[]
 ) {
+	return conditionSentence(t, condition, states, true);
+}
+
+function conditionSentence(
+	t: TFunction,
+	condition: VisualExpression,
+	states: VisualStoryState[],
+	hidden: boolean
+): string {
+	// An AND chain of builder rows reads as rows joined by 'and'.
+	const rows = conditionRows(condition);
+
+	if (rows && rows.length > 1) {
+		return rows
+			.map(row => conditionSentence(t, row, states, hidden))
+			.join(t('dialogs.passageEdit.visual.and'));
+	}
+
+	const parts = conditionInterpolation(t, condition, states);
+
+	if (parts.kind === 'count') {
+		return t(
+			hidden
+				? 'dialogs.passageEdit.visual.hiddenBecauseCount'
+				: 'dialogs.passageEdit.visual.conditionSentenceCount',
+			parts
+		);
+	}
+
 	return t(
-		'dialogs.passageEdit.visual.hiddenBecause',
-		conditionInterpolation(t, condition, states)
+		hidden
+			? 'dialogs.passageEdit.visual.hiddenBecause'
+			: 'dialogs.passageEdit.visual.conditionSentence',
+		parts
 	);
 }
 
@@ -665,6 +708,24 @@ function conditionInterpolation(
 	condition: VisualExpression,
 	states: VisualStoryState[]
 ) {
+	// A count comparison counts an item of a list state.
+	if (
+		condition.kind === 'binary' &&
+		condition.left.kind === 'count' &&
+		condition.right.kind === 'literal'
+	) {
+		const {left, right} = condition;
+		const state = states.find(item => item.id === left.variableId);
+
+		return {
+			kind: 'count' as const,
+			item: String(left.value),
+			operator: operatorSymbol(condition.operator, t),
+			state: state?.name ?? '?',
+			threshold: String(right.value)
+		};
+	}
+
 	// The sentence template expects a {state, operator, value} three-piece. For
 	// a simple binary editor expression we break it apart; anything else falls
 	// back to the full expression text.
@@ -675,6 +736,7 @@ function conditionInterpolation(
 			const state = states.find(item => item.id === left.variableId);
 
 			return {
+				kind: 'plain' as const,
 				operator: operatorSymbol(condition.operator, t),
 				state: state?.name ?? '?',
 				value: String(right.value)
@@ -683,6 +745,7 @@ function conditionInterpolation(
 	}
 
 	return {
+		kind: 'plain' as const,
 		operator: '',
 		state: expressionToText(condition, states),
 		value: ''
@@ -735,6 +798,19 @@ export function actionSentenceText(
 	}
 
 	const state = states.find(item => item.id === action.stateId);
+
+	// Backpack push/remove read as item sentences.
+	if (
+		state?.name === BACKPACK_STATE_NAME &&
+		(action.operation === 'push' || action.operation === 'remove')
+	) {
+		return t(
+			action.operation === 'push'
+				? 'dialogs.passageEdit.visual.itemSentenceObtain'
+				: 'dialogs.passageEdit.visual.itemSentenceConsume',
+			{item: String(action.value)}
+		);
+	}
 
 	return t('dialogs.passageEdit.visual.actionSentence', {
 		operation: actionOperationWord(t, action.operation),
@@ -905,13 +981,31 @@ function useDebouncedSave<T>(
 	return [value, schedule, flush];
 }
 
-/** A simple binary gate expression the condition editor produces. */
+/**
+ * A simple builder row the condition editor produces: a plain comparison of a
+ * state variable against a literal, or a count comparison of a list state's
+ * item occurrences against a threshold literal.
+ */
 type SimpleCondition = {
 	kind: 'binary';
 	operator: VisualBinaryOperator;
-	left: {kind: 'variable'; variableId: string};
+	left:
+		| {kind: 'variable'; variableId: string}
+		| {kind: 'count'; variableId: string; value: boolean | number | string};
 	right: {kind: 'literal'; value: boolean | number | string};
 };
+
+/** Operators the builder can produce directly. */
+const SIMPLE_OPERATORS: VisualBinaryOperator[] = [
+	'==',
+	'!=',
+	'>',
+	'>=',
+	'<',
+	'<=',
+	'includes',
+	'notIncludes'
+];
 
 function simpleCondition(
 	variableId: string,
@@ -926,16 +1020,78 @@ function simpleCondition(
 	};
 }
 
-/** True when the expression is exactly the simple binary shape. */
+/** A 'count of item >= threshold' builder row on a list state. */
+function countCondition(
+	variableId: string,
+	item: boolean | number | string,
+	threshold: boolean | number | string
+): SimpleCondition {
+	return {
+		kind: 'binary',
+		operator: '>=',
+		left: {kind: 'count', variableId, value: item},
+		right: {kind: 'literal', value: threshold}
+	};
+}
+
+/** True when the expression is exactly one builder row. */
 function isSimpleCondition(
 	condition?: VisualExpression
 ): condition is SimpleCondition {
 	return Boolean(
 		condition &&
 			condition.kind === 'binary' &&
-			condition.left.kind === 'variable' &&
+			SIMPLE_OPERATORS.includes(condition.operator) &&
+			(condition.left.kind === 'variable' ||
+				(condition.left.kind === 'count' &&
+					condition.operator === '>=')) &&
 			condition.right.kind === 'literal'
 	);
+}
+
+/**
+ * Flattens a condition into its builder rows: a single row stands alone, an
+ * AND chain of rows is split at every `&&`. Returns undefined when the
+ * expression is not made only of builder rows (so it can only be edited as
+ * free code).
+ */
+function conditionRows(
+	condition?: VisualExpression
+): SimpleCondition[] | undefined {
+	if (!condition) {
+		return undefined;
+	}
+
+	if (isSimpleCondition(condition)) {
+		return [condition];
+	}
+
+	if (condition.kind === 'binary' && condition.operator === '&&') {
+		const left = conditionRows(condition.left);
+		const right = conditionRows(condition.right);
+
+		if (left && right) {
+			return [...left, ...right];
+		}
+	}
+
+	return undefined;
+}
+
+/** Builds a condition from builder rows (an AND chain when more than one). */
+function rowsToCondition(rows: SimpleCondition[]): VisualExpression {
+	return rows.reduceRight<VisualExpression | undefined>(
+		(right, row) =>
+			right === undefined
+				? row
+				: {
+						kind: 'binary',
+						operator: '&&',
+						left: row,
+						right
+					},
+		undefined
+	)!;
 }
 
 /** Serializes the simple builder shape into a free-code string. */
@@ -1015,16 +1171,17 @@ function ConditionEditor(props: {
 	const {condition, onChange, states} = props;
 	const {t} = useTranslation();
 
-	// Whether the stored expression is the simple builder shape.
-	const simple = isSimpleCondition(condition) ? condition : undefined;
+	// Whether the stored expression is the simple builder shape (one row or
+	// an AND chain of rows).
+	const rows = conditionRows(condition);
 	const startsInExpression =
-		condition !== undefined && simple === undefined;
+		condition !== undefined && rows === undefined;
 	const [mode, setMode] = React.useState<'builder' | 'expression'>(
 		startsInExpression ? 'expression' : 'builder'
 	);
 	const [freeCode, setFreeCode] = React.useState(
-		simple && condition
-			? serializeSimpleToCode(simple, states)
+		rows && rows.length === 1
+			? serializeSimpleToCode(rows[0], states)
 			: condition?.kind === 'free'
 				? condition.code
 				: ''
@@ -1037,8 +1194,14 @@ function ConditionEditor(props: {
 			return;
 		}
 
-		if (isSimpleCondition(condition)) {
-			setFreeCode(serializeSimpleToCode(condition, states));
+		const currentRows = conditionRows(condition);
+
+		if (currentRows) {
+			// Builder rows (single or an AND chain) stay in builder mode; the
+			// free-code field only serves expression mode.
+			if (currentRows.length === 1) {
+				setFreeCode(serializeSimpleToCode(currentRows[0], states));
+			}
 		} else if (condition.kind === 'free') {
 			setFreeCode(condition.code);
 			setMode('expression');
@@ -1083,16 +1246,16 @@ function ConditionEditor(props: {
 			<div className="condition-editor-tabs">
 				<button
 					className={mode === 'builder' ? 'is-active' : undefined}
-					disabled={!simple}
+					disabled={!rows}
 					onClick={() => {
-						// Builder mode edits the stored simple shape directly.
-						if (simple) {
+						// Builder mode edits the stored rows directly.
+						if (rows) {
 							setMode('builder');
 							return;
 						}
 
 						// Expression -> builder is only offered when the free
-						// code parses back to the simple shape.
+						// code parses back to a single simple row.
 						const parsed = parseSimpleFromCode(freeCode, states);
 
 						if (parsed) {
@@ -1108,8 +1271,13 @@ function ConditionEditor(props: {
 					className={mode === 'expression' ? 'is-active' : undefined}
 					onClick={() => {
 						// Builder -> expression: serialize the structured shape.
-						if (simple) {
-							setFreeCode(serializeSimpleToCode(simple, states));
+						if (rows) {
+							setFreeCode(
+								serializeExpressionToCode(
+									rowsToCondition(rows),
+									states
+								) ?? expressionToText(rowsToCondition(rows), states)
+							);
 						}
 						setMode('expression');
 					}}
@@ -1119,15 +1287,15 @@ function ConditionEditor(props: {
 				</button>
 			</div>
 
-			{!simple && (
+			{!rows && (
 				<p className="empty-state advanced-syntax-note">
 					{t('dialogs.passageEdit.visual.advancedSyntaxNote')}
 				</p>
 			)}
 
-			{mode === 'builder' && simple && (
+			{mode === 'builder' && rows && (
 				<BuilderCondition
-					condition={simple}
+					rows={rows}
 					onChange={onChange}
 					states={states}
 				/>
@@ -1154,77 +1322,224 @@ function ConditionEditor(props: {
 	);
 }
 
-/** The builder-mode editor body (variable, operator, literal). */
+/** The builder-mode editor body: an AND chain of editable condition rows. */
 function BuilderCondition(props: {
-	condition: SimpleCondition;
+	rows: SimpleCondition[];
 	onChange: (condition?: VisualExpression) => void;
 	states: VisualStoryState[];
 }) {
-	const {condition, onChange, states} = props;
+	const {rows, onChange, states} = props;
 	const {t} = useTranslation();
-	const variableId = condition.left.variableId;
-	const state = states.find(item => item.id === variableId);
 
-	function update(next: SimpleCondition) {
-		onChange(next);
+	function updateRow(index: number, next: SimpleCondition) {
+		onChange(
+			rowsToCondition(rows.map((row, i) => (i === index ? next : row)))
+		);
+	}
+
+	function deleteRow(index: number) {
+		const nextRows = rows.filter((_, i) => i !== index);
+
+		onChange(nextRows.length === 0 ? undefined : rowsToCondition(nextRows));
 	}
 
 	return (
 		<>
-			<div className="condition-editor">
-				<select
-					aria-label={t('dialogs.passageEdit.visual.conditionState')}
-					onChange={event => {
-						const nextState = states.find(
-							item => item.id === event.target.value
-						);
-						const nextOperator =
-							nextState?.type === 'list' ? 'includes' : '==';
-						update(
-							simpleCondition(
-								event.target.value,
-								nextOperator,
-								stateValuePlaceholder(nextState)
+			{rows.map((row, index) => (
+				<div className="condition-row" key={index}>
+					{index > 0 && (
+						<span className="condition-and">
+							{t('dialogs.passageEdit.visual.and')}
+						</span>
+					)}
+					<BuilderConditionRow
+						condition={row}
+						onUpdate={next => updateRow(index, next)}
+						states={states}
+					/>
+					<button
+						aria-label={t(
+							'dialogs.passageEdit.visual.removeCondition'
+						)}
+						onClick={() => deleteRow(index)}
+						type="button"
+					>×</button>
+				</div>
+			))}
+			<button onClick={() => addRow()} type="button">
+				{t('dialogs.passageEdit.visual.addAndCondition')}
+			</button>
+			<p className="condition-summary">
+				{conditionSentenceText(t, rowsToCondition(rows), states)}
+			</p>
+		</>
+	);
+
+	function addRow() {
+		const state = states[0];
+		const row = state
+			? simpleCondition(
+					state.id,
+					state.type === 'list' ? 'includes' : '==',
+					stateValuePlaceholder(state)
+				)
+			: null;
+
+		if (!row) {
+			return;
+		}
+
+		onChange(rowsToCondition([...rows, row]));
+	}
+}
+
+/** One editable row of the builder: state, operator, and value(s). */
+function BuilderConditionRow(props: {
+	condition: SimpleCondition;
+	onUpdate: (next: SimpleCondition) => void;
+	states: VisualStoryState[];
+}) {
+	const {condition, onUpdate, states} = props;
+	const {t} = useTranslation();
+	const left = condition.left;
+	const isCount = left.kind === 'count';
+	const variableId = condition.left.variableId;
+	const state = states.find(item => item.id === variableId);
+
+	return (
+		<div className="condition-editor">
+			<select
+				aria-label={t('dialogs.passageEdit.visual.conditionState')}
+				onChange={event => {
+					const nextState = states.find(
+						item => item.id === event.target.value
+					);
+					const nextOperator =
+						nextState?.type === 'list' ? 'includes' : '==';
+					onUpdate(
+						simpleCondition(
+							event.target.value,
+							nextOperator,
+							stateValuePlaceholder(nextState)
+						)
+					);
+				}}
+				value={variableId}
+			>
+				{states.map(item => (
+					<option key={item.id} value={item.id}>{item.name}</option>
+				))}
+			</select>
+			<select
+				aria-label={t('dialogs.passageEdit.visual.conditionOperator')}
+				onChange={event => {
+					const operator = event.target.value;
+
+					if (operator === 'countGE') {
+						// Morph into a count row: item occurrences >= threshold.
+						onUpdate(
+							countCondition(
+								variableId,
+								stateValuePlaceholder(state),
+								1
 							)
 						);
-					}}
-					value={variableId}
-				>
-					{states.map(item => (
-						<option key={item.id} value={item.id}>{item.name}</option>
-					))}
-				</select>
-				<select
-					aria-label={t('dialogs.passageEdit.visual.conditionOperator')}
-					onChange={event =>
-						update({
-							...condition,
-							operator: event.target.value as VisualBinaryOperator
-						})
+						return;
 					}
-					value={condition.operator}
-				>
-					<option value="==">=</option>
-					<option value="!=">≠</option>
-					{state?.type === 'number' && <option value=">">&gt;</option>}
-					{state?.type === 'number' && <option value=">=">&ge;</option>}
-					{state?.type === 'number' && <option value="<">&lt;</option>}
-					{state?.type === 'number' && <option value="<=">&le;</option>}
-					{state?.type === 'list' && (
-						<option value="includes">
-							{t('dialogs.passageEdit.visual.operatorIncludes')}
-						</option>
-					)}
-					{state?.type === 'list' && (
-						<option value="notIncludes">
-							{t('dialogs.passageEdit.visual.operatorNotIncludes')}
-						</option>
-					)}
-				</select>
+
+					if (isCount) {
+						// Leaving the count row morphs back to a plain row.
+						onUpdate(
+							simpleCondition(
+								variableId,
+								operator as VisualBinaryOperator,
+								stateValuePlaceholder(state)
+							)
+						);
+						return;
+					}
+
+					onUpdate({
+						...condition,
+						operator: operator as VisualBinaryOperator
+					});
+				}}
+				value={isCount ? 'countGE' : condition.operator}
+			>
+				{!isCount && <option value="==">=</option>}
+				{!isCount && <option value="!=">≠</option>}
+				{!isCount && state?.type === 'number' && (
+					<option value=">">&gt;</option>
+				)}
+				{!isCount && state?.type === 'number' && (
+					<option value=">=">&ge;</option>
+				)}
+				{!isCount && state?.type === 'number' && (
+					<option value="<">&lt;</option>
+				)}
+				{!isCount && state?.type === 'number' && (
+					<option value="<=">&le;</option>
+				)}
+				{!isCount && state?.type === 'list' && (
+					<option value="includes">
+						{t('dialogs.passageEdit.visual.operatorIncludes')}
+					</option>
+				)}
+				{!isCount && state?.type === 'list' && (
+					<option value="notIncludes">
+						{t('dialogs.passageEdit.visual.operatorNotIncludes')}
+					</option>
+				)}
+				{state?.type === 'list' && (
+					<option value="countGE">
+						{t('dialogs.passageEdit.visual.operatorCountGE')}
+					</option>
+				)}
+			</select>
+			{isCount ? (
+				<>
+					<input
+						aria-label={t(
+							'dialogs.passageEdit.visual.itemCountItem'
+						)}
+						onChange={event =>
+							onUpdate({
+								...condition,
+								left: {
+									kind: 'count',
+									variableId,
+									value: event.target.value
+								}
+							})
+						}
+						value={String(left.value)}
+					/>
+					<input
+						aria-label={t(
+							'dialogs.passageEdit.visual.itemCountThreshold'
+						)}
+						min={1}
+						onChange={event =>
+							onUpdate({
+								...condition,
+								right: {
+									kind: 'literal',
+									value: Math.max(
+										Number(event.target.value) || 1,
+										1
+									)
+								}
+							})
+						}
+						type="number"
+						value={String(condition.right.value)}
+					/>
+				</>
+			) : (
 				<StateValueInput
 					label={t('dialogs.passageEdit.visual.conditionValue')}
 					onChange={value =>
-						update({
+						onUpdate({
 							...condition,
 							right: {kind: 'literal', value}
 						})
@@ -1232,12 +1547,8 @@ function BuilderCondition(props: {
 					state={state}
 					value={condition.right.value}
 				/>
-				<button onClick={() => onChange(undefined)} type="button">×</button>
-			</div>
-			<p className="condition-summary">
-				{conditionSentenceText(t, condition, states)}
-			</p>
-		</>
+			)}
+		</div>
 	);
 }
 
@@ -1366,6 +1677,13 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 		next => onUpdate({label: next}),
 		onSavePending,
 		onSaveFlushed
+	);
+	const [itemTemplateAction, setItemTemplateAction] = React.useState<
+		'obtain' | 'consume' | ''
+	>('');
+	const [itemTemplateName, setItemTemplateName] = React.useState('');
+	const backpackState = states.find(
+		state => state.name === BACKPACK_STATE_NAME
 	);
 
 	return (
@@ -1578,6 +1896,68 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					}}
 					type="button"
 					>{t('dialogs.passageEdit.visual.addAction')}</button>
+					<div className="item-template-row">
+						<span>{t('dialogs.passageEdit.visual.itemAction')}</span>
+						<select
+							aria-label={t('dialogs.passageEdit.visual.itemAction')}
+							onChange={event =>
+								setItemTemplateAction(
+									event.target.value as 'obtain' | 'consume' | ''
+								)
+							}
+							value={itemTemplateAction}
+						>
+							<option value="">
+								{t('dialogs.passageEdit.visual.itemActionPlaceholder')}
+							</option>
+							<option value="obtain">
+								{t('dialogs.passageEdit.visual.itemObtain')}
+							</option>
+							<option value="consume">
+								{t('dialogs.passageEdit.visual.itemConsume')}
+							</option>
+						</select>
+						<input
+							aria-label={t('dialogs.passageEdit.visual.itemName')}
+							onChange={event => setItemTemplateName(event.target.value)}
+							placeholder={t('dialogs.passageEdit.visual.itemNamePlaceholder')}
+							value={itemTemplateName}
+						/>
+						<button
+							disabled={
+								!itemTemplateAction ||
+								!itemTemplateName.trim() ||
+								!backpackState
+							}
+							onClick={() => {
+								const item = itemTemplateName.trim();
+
+								if (!itemTemplateAction || !item || !backpackState) {
+									return;
+								}
+
+								onUpdate({
+									actions: [
+										...(choice.actions ?? []),
+										{
+											operation:
+												itemTemplateAction === 'obtain' ? 'push' : 'remove',
+											stateId: backpackState.id,
+											value: item
+										}
+									]
+								});
+								setItemTemplateAction('');
+								setItemTemplateName('');
+							}}
+							type="button"
+						>{t('dialogs.passageEdit.visual.addItemAction')}</button>
+					</div>
+					{!backpackState && (
+						<p className="empty-state">
+							{t('dialogs.passageEdit.visual.backpackMissingHint')}
+						</p>
+					)}
 					{states.length === 0 && (
 						<p className="empty-state">
 							{t('dialogs.passageEdit.visual.noStatesHint')}

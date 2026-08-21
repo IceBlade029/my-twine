@@ -259,6 +259,13 @@ export type VisualBinaryOperator =
 export type VisualExpression =
 	| {kind: 'literal'; value: boolean | number | string}
 	| {kind: 'variable'; variableId: string}
+	| {
+			kind: 'count';
+			/** List state whose items are counted. */
+			variableId: string;
+			/** The item whose occurrences are counted. */
+			value: boolean | number | string;
+	  }
 	| {kind: 'loopItem'}
 	| {kind: 'unary'; operator: '!'; operand: VisualExpression}
 	| {

@@ -1219,7 +1219,8 @@ describe('human-readable conditions and actions', () => {
 
 	const states: VisualStoryState[] = [
 		{defaultValue: false, id: 'door', name: 'Door', type: 'boolean'},
-		{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number'}
+		{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number'},
+		{defaultValue: [], id: 'bp', name: 'backpack', type: 'list'}
 	];
 
 	beforeAll(async () => {
@@ -1249,6 +1250,96 @@ describe('human-readable conditions and actions', () => {
 		]);
 		tEn = en.t.bind(en);
 		tZh = zh.t.bind(zh);
+	});
+
+	it('offers count conditions for list states and edits item and threshold', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: [], id: 'bp', name: 'backpack', type: 'list'}
+				],
+				version: 1
+			};
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						condition: cond('includes', 'bp', '药草'),
+						id: 'text-1',
+						kind: 'text',
+						text: 'Craft.'
+					}
+				],
+				version: 2
+			};
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+		const operator = screen.getByLabelText(
+			'dialogs.passageEdit.visual.conditionOperator'
+		);
+
+		// List states offer the count operator.
+		expect(operator).toHaveTextContent(
+			'dialogs.passageEdit.visual.operatorCountGE'
+		);
+
+		// Switching to it morphs the row into item + threshold inputs.
+		fireEvent.change(operator, {target: {value: 'countGE'}});
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemCountItem'),
+			{target: {value: '药草'}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemCountThreshold'),
+			{target: {value: '3'}}
+		);
+
+		expect(passageText()).toHaveTextContent(
+			'($backpack).count("药草") >= 3'
+		);
+	});
+
+	it('builds an AND chain of condition rows', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: [], id: 'bp', name: 'backpack', type: 'list'},
+					{defaultValue: [], id: 'inv', name: '其他', type: 'list'}
+				],
+				version: 1
+			};
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						condition: cond('includes', 'bp', '药草'),
+						id: 'text-1',
+						kind: 'text',
+						text: 'Craft.'
+					}
+				],
+				version: 2
+			};
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		// Add a second row; the chain compiles to an AND of both rows.
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addAndCondition')
+		);
+
+		expect(passageText()).toHaveTextContent(
+			'($backpack).includes("药草") && ($backpack).includes("")'
+		);
+
+		// Deleting a row shrinks the chain back to a single condition.
+		const removeButtons = screen.getAllByLabelText(
+			'dialogs.passageEdit.visual.removeCondition'
+		);
+
+		expect(removeButtons).toHaveLength(2);
+		fireEvent.click(removeButtons[1]);
+		expect(passageText()).not.toHaveTextContent('&&');
 	});
 
 	it('renders a live condition sentence for a gated block', () => {
@@ -1320,6 +1411,67 @@ describe('human-readable conditions and actions', () => {
 				states
 			)
 		).toBe('点击后：时间推进 1 个时段');
+		expect(
+			actionSentenceText(
+				tEn,
+				{operation: 'push', stateId: 'bp', value: '药草'},
+				states
+			)
+		).toBe('After choosing: backpack gains 药草');
+		expect(
+			actionSentenceText(
+				tZh,
+				{operation: 'remove', stateId: 'bp', value: '药草'},
+				states
+			)
+		).toBe('点击后：背包消耗『药草』');
+		expect(
+			conditionSentenceText(
+				tZh,
+				{
+					kind: 'binary',
+					operator: '>=',
+					left: {kind: 'count', variableId: 'bp', value: '药草'},
+					right: {kind: 'literal', value: 2}
+				},
+				states
+			)
+		).toBe('当【backpack】中『药草』数量 ≥ 2时');
+		expect(
+			conditionSentenceText(
+				tEn,
+				{
+					kind: 'binary',
+					operator: '>=',
+					left: {kind: 'count', variableId: 'bp', value: '药草'},
+					right: {kind: 'literal', value: 2}
+				},
+				states
+			)
+		).toBe('When backpack count of 药草 ≥ 2');
+	});
+
+	it('evaluates count comparisons against simulated list values', () => {
+		const countCond = (item: string, threshold: number) => ({
+			kind: 'binary' as const,
+			operator: '>=' as const,
+			left: {kind: 'count' as const, variableId: 'bp', value: item},
+			right: {kind: 'literal' as const, value: threshold}
+		});
+
+		expect(
+			evaluateExpression(countCond('药草', 2), states, {
+				bp: ['药草', '药草', '树枝']
+			})
+		).toBe(true);
+		expect(
+			evaluateExpression(countCond('药草', 3), states, {
+				bp: ['药草', '药草', '树枝']
+			})
+		).toBe(false);
+
+		// Without a simulated value the default (empty list) applies.
+		expect(evaluateExpression(countCond('药草', 1), states, {})).toBe(false);
 	});
 
 	it('evaluates expressions against simulated values', () => {
@@ -1570,6 +1722,119 @@ describe('human-readable conditions and actions', () => {
 		expect(
 			screen.getByLabelText('dialogs.passageEdit.visual.actionSteps')
 		).toHaveValue(1);
+	});
+
+	it('adds an obtain-item action through the item template', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: [], id: 'bp', name: 'backpack', type: 'list'}
+				],
+				version: 1
+			};
+			setup.passages[1].name = 'Hallway';
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						actions: [],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Pick herbs',
+						targetPassageId: setup.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemAction'),
+			{target: {value: 'obtain'}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemName'),
+			{target: {value: '药草'}}
+		);
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addItemAction')
+		);
+
+		// The template generates a plain push action on the backpack state.
+		expect(passageText()).toHaveTextContent('$backpack.push("药草")');
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.itemSentenceObtain')
+		).toBeInTheDocument();
+	});
+
+	it('adds a consume-item action through the item template', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [
+					{defaultValue: [], id: 'bp', name: 'backpack', type: 'list'}
+				],
+				version: 1
+			};
+			setup.passages[1].name = 'Hallway';
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						actions: [],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Use potion',
+						targetPassageId: setup.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemAction'),
+			{target: {value: 'consume'}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemName'),
+			{target: {value: '药水'}}
+		);
+		fireEvent.click(
+			screen.getByText('dialogs.passageEdit.visual.addItemAction')
+		);
+
+		expect(passageText()).toHaveTextContent('$backpack.delete("药水")');
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.itemSentenceConsume')
+		).toBeInTheDocument();
+	});
+
+	it('hints at the backpack system when no backpack state exists', () => {
+		renderComponent(setup => {
+			setup.visual = {states: [], version: 1};
+			setup.passages[1].name = 'Hallway';
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						actions: [],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Keep walking',
+						targetPassageId: setup.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.backpackMissingHint')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.addItemAction')
+		).toBeDisabled();
 	});
 });
 

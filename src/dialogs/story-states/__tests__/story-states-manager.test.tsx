@@ -132,6 +132,58 @@ describe('<StoryStatesManager>', () => {
 		).not.toHaveTextContent(/<<if/);
 	});
 
+	it('strips count conditions referencing a deleted state', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: [],
+						id: 'state-1',
+						name: 'backpack',
+						type: 'list'
+					}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: {
+							kind: 'binary',
+							operator: '>=',
+							left: {
+								kind: 'count',
+								variableId: 'state-1',
+								value: '药草'
+							},
+							right: {kind: 'literal', value: 2}
+						},
+						id: 'text-1',
+						kind: 'text',
+						text: 'Craft.'
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('($backpack).count("药草") >= 2');
+
+		// Deleting the state strips the count condition on recompile.
+		fireEvent.click(screen.getByText('×'));
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).not.toHaveTextContent(/count|<<if/);
+	});
+
 	it('strips an interaction block condition referencing a deleted state', () => {
 		const story = renderComponent(story => {
 			story.visual = {

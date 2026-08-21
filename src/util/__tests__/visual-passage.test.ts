@@ -204,6 +204,81 @@ describe('visual passage utilities', () => {
 		);
 	});
 
+	it('compiles count comparisons of list items', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: [],
+			id: 'bp',
+			name: 'backpack',
+			type: 'list' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[1].name = 'Next';
+		const content: VisualPassageContentV2 = {
+			blocks: [
+				{
+					condition: {
+						kind: 'binary',
+						operator: '>=',
+						left: {kind: 'count', variableId: state.id, value: '药草'},
+						right: {kind: 'literal', value: 2}
+					},
+					id: 'choice-1',
+					kind: 'choice',
+					actions: [],
+					label: '合成木弓',
+					targetPassageId: story.passages[1].id
+				}
+			],
+			version: 2
+		};
+
+		expect(
+			compileVisualPassage(content, story, story.passages[0].id)
+		).toContain(
+			'<<if (($backpack).count("药草") >= 2)>>[[合成木弓->Next]]<</if>>'
+		);
+	});
+
+	it('does not compile count comparisons on non-list states', () => {
+		const story = fakeStory(2);
+		const state = {
+			defaultValue: 0,
+			id: 'trust',
+			name: 'Trust',
+			type: 'number' as const
+		};
+
+		story.visual = {states: [state], version: 1};
+		story.passages[1].name = 'Next';
+		const content: VisualPassageContentV2 = {
+			blocks: [
+				{
+					condition: {
+						kind: 'binary',
+						operator: '>=',
+						left: {kind: 'count', variableId: state.id, value: '药草'},
+						right: {kind: 'literal', value: 2}
+					},
+					id: 'choice-1',
+					kind: 'choice',
+					actions: [],
+					label: '合成木弓',
+					targetPassageId: story.passages[1].id
+				}
+			],
+			version: 2
+		};
+
+		// The count cannot compile on a non-list state: the condition is
+		// silently dropped (mirroring other un-compilable conditions), so the
+		// link renders without a gate.
+		expect(compileVisualPassage(content, story, story.passages[0].id)).toBe(
+			'[[合成木弓->Next]]'
+		);
+	});
+
 	it('compiles expression nodes across all operators', () => {
 		const states = [
 			{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number' as const},

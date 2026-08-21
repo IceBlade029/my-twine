@@ -269,8 +269,13 @@ export type VisualExpression =
 	  }
 	| {kind: 'free'; code: string};
 
+/**
+ * A choice action. 'advanceTime' advances the story's day/period time system
+ * by `value` periods and does not reference a story state: its `stateId` is
+ * ignored by the compiler and the state stripping walk.
+ */
 export interface VisualStateAction {
-	operation: 'set' | 'increase' | 'decrease' | 'push' | 'remove' | 'clear';
+	operation: 'set' | 'increase' | 'decrease' | 'push' | 'remove' | 'clear' | 'advanceTime';
 	stateId: string;
 	value: boolean | number | string;
 }

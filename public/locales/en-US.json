@@ -209,7 +209,9 @@
 				"actions": "After choosing",
 				"actionOperation": "Action operation",
 				"actionSentence": "After choosing: {{state}} {{operation}} {{value}}",
+				"actionSentenceAdvanceTime": "After choosing: time advances {{count}} periods",
 				"actionState": "Action state",
+				"actionSteps": "Time periods",
 				"actionValue": "Action value",
 				"addAction": "Add action",
 				"addCase": "Add case",
@@ -277,6 +279,7 @@
 				"noStatesHint": "Create story states first, using the Story States dialog.",
 				"number": "Number",
 				"operationAppend": "append",
+				"operationAdvanceTime": "advance time",
 				"operationClear": "clear",
 				"operationDecrease": "decrease by",
 				"operationIncrease": "increase by",
@@ -531,8 +534,11 @@
 				"publishToFile": "Publish to File",
 				"selectAllPassages": "Select All Passages"
 			},
-			"storyStatesButton": {
-				"label": "Story Variables"
+"storyStatesButton": {
+				"label": "Story states"
+			},
+			"timeSystemButton": {
+				"label": "Time system"
 			},
 			"zoomButtons": {
 				"legend": "Zoom",
@@ -662,6 +668,7 @@
 	"undoChange": {
 		"addTag": "Add Tag",
 		"changeTagColor": "Change Tag Color",
+		"createTimeSystem": "Create Time System",
 		"newPassage": "New Passage",
 		"deletePassage": "Delete Passage",
 		"deletePassages": "Delete Passages",

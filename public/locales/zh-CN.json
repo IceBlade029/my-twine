@@ -209,7 +209,9 @@
 				"actions": "选择后执行",
 				"actionOperation": "操作类型",
 				"actionSentence": "点击后：【{{state}}】{{operation}} 『{{value}}』",
+				"actionSentenceAdvanceTime": "点击后：时间推进 {{count}} 个时段",
 				"actionState": "操作状态",
+				"actionSteps": "推进时段数",
 				"actionValue": "操作值",
 				"addAction": "添加操作",
 				"addCase": "添加分支",
@@ -277,6 +279,7 @@
 				"noStatesHint": "请先在「故事状态」对话框中创建故事状态。",
 				"number": "数值",
 				"operationAppend": "追加",
+				"operationAdvanceTime": "推进时间",
 				"operationClear": "清空",
 				"operationDecrease": "减",
 				"operationIncrease": "加",
@@ -534,6 +537,9 @@
 			"storyStatesButton": {
 				"label": "故事变量"
 			},
+			"timeSystemButton": {
+				"label": "时间系统"
+			},
 			"zoomButtons": {
 				"storyStructure": "仅显示故事结构",
 				"passageNames": "仅显示片段名称",
@@ -662,6 +668,7 @@
 	"undoChange": {
 		"addTag": "添加标签",
 		"changeTagColor": "更改标签颜色",
+		"createTimeSystem": "创建时间系统",
 		"newPassage": "新建片段",
 		"deletePassage": "删除片段",
 		"deletePassages": "删除片段",

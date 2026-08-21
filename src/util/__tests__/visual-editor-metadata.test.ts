@@ -106,6 +106,44 @@ describe('visual editor HTML metadata', () => {
 		);
 	});
 
+	it('round trips advance-time choice actions through HTML', () => {
+		const story = fakeStory(2);
+
+		// The time-system action works even without any story states.
+		story.visual = {states: [], version: 1};
+		story.passages[0].name = 'Start';
+		story.passages[1].name = 'Next';
+		story.passages[0].visual = {
+			blocks: [
+				{
+					actions: [
+						{operation: 'advanceTime', stateId: '', value: 3}
+					],
+					id: 'choice-1',
+					kind: 'choice',
+					label: 'Sleep',
+					targetPassageId: story.passages[1].id
+				}
+			],
+			version: 2
+		};
+		story.passages[0].text = compileVisualPassage(
+			story.passages[0].visual,
+			story,
+			story.passages[0].id
+		);
+		const [restored] = importStories(
+			publishStory(story, fakeAppInfo(), {startOptional: true})
+		);
+
+		expect(restored.visual).toEqual(story.visual);
+		expect(
+			((restored.passages[0].visual as VisualPassageContentV2).blocks[0] as VisualChoiceBlock)
+				.actions
+		).toEqual([{operation: 'advanceTime', stateId: '', value: 3}]);
+		expect(restored.passages[0].text).toBe(story.passages[0].text);
+	});
+
 	it('round trips variable and include blocks, remapping include targets by name', () => {
 		const story = fakeStory(3);
 		const state = {

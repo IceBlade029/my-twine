@@ -172,6 +172,38 @@ describe('visual passage utilities', () => {
 		).not.toContain('<<if ndef $Trust>>');
 	});
 
+	it('compiles advance-time actions into the story time engine call', () => {
+		const story = fakeStory(2);
+
+		story.passages[1].name = 'Next';
+		// The time-system action needs no story states at all.
+		story.visual = {states: [], version: 1};
+		const content: VisualPassageContentV2 = {
+			blocks: [
+				{
+					actions: [
+						{operation: 'advanceTime', stateId: '', value: 2},
+						{operation: 'advanceTime', stateId: '', value: 0},
+						{operation: 'advanceTime', stateId: '', value: 'x'}
+					],
+					id: 'choice-1',
+					kind: 'choice',
+					label: 'Sleep',
+					targetPassageId: story.passages[1].id
+				}
+			],
+			version: 2
+		};
+
+		// Valid step counts are passed through; a zero or non-numeric value
+		// falls back to a single step.
+		expect(
+			compileVisualPassage(content, story, story.passages[0].id)
+		).toBe(
+			'[[Sleep->Next][setup.time.advance(2); setup.time.advance(1); setup.time.advance(1)]]'
+		);
+	});
+
 	it('compiles expression nodes across all operators', () => {
 		const states = [
 			{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number' as const},

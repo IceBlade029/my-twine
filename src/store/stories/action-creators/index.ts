@@ -1,6 +1,7 @@
 export * from './create-newly-linked-passages';
 export * from './create-special-passage';
 export * from './create-story';
+export * from './create-time-system';
 export * from './create-untitled-passage';
 export * from './delete-passage';
 export * from './delete-story';

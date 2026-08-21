@@ -4,7 +4,7 @@ import {Story, useStoriesContext} from '../../../store/stories';
 import {fakeStory, FakeStateProvider, StoryInspector} from '../../../test-util';
 import {VisualBinaryOperator} from '../../../store/stories';
 import {compileVisualPassage} from '../../../util/visual-passage';
-import {StoryStatesManager} from '../story-states-manager';
+import {StoryStatesManager, isActionCompatible} from '../story-states-manager';
 
 
 function cond(operator: VisualBinaryOperator, variableId: string, value: boolean | number | string) {
@@ -596,5 +596,74 @@ describe('<StoryStatesManager>', () => {
 				'dialogs.passageEdit.visual.nameConflictWarning'
 			).length
 		).toBeGreaterThanOrEqual(1);
+	});
+
+	it('treats advance-time actions as compatible with any state situation', () => {
+		// The action needs no state, so a missing state must not make it
+		// incompatible (otherwise state deletion would silently strip it).
+		expect(
+			isActionCompatible({operation: 'advanceTime', stateId: '', value: 2})
+		).toBe(true);
+		expect(
+			isActionCompatible({operation: 'advanceTime', stateId: '', value: 2}, {
+				defaultValue: 1,
+				id: 'day',
+				name: 'day',
+				type: 'number'
+			})
+		).toBe(true);
+	});
+
+	it('keeps an advance-time choice action when every state is deleted', () => {
+		const story = renderComponent(story => {
+			story.visual = {
+				states: [
+					{
+						defaultValue: 0,
+						id: 'state-1',
+						name: 'Trust',
+						type: 'number'
+					}
+				],
+				version: 1
+			};
+			story.passages[1].name = 'Hallway';
+			story.passages[0].visual = {
+				blocks: [
+					{
+						actions: [
+							{operation: 'advanceTime', stateId: '', value: 1},
+							{operation: 'increase', stateId: 'state-1', value: 1}
+						],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Keep walking',
+						targetPassageId: story.passages[1].id
+					}
+				],
+				version: 2
+			};
+			story.passages[0].text = compileVisualPassage(
+				story.passages[0].visual,
+				story,
+				story.passages[0].id
+			);
+		});
+
+		// Both actions compile while the state exists.
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent(/setup\.time\.advance\(1\).*\$Trust \+= 1/s);
+
+		// Deleting the only state strips the state action but keeps the
+		// time-system action.
+		fireEvent.click(screen.getByText('×'));
+
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).toHaveTextContent('setup.time.advance(1)');
+		expect(
+			screen.getByTestId(`passage-${story.passages[0].id}`)
+		).not.toHaveTextContent('$Trust');
 	});
 });

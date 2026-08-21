@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并在用户实测后由提交 `d48a6fad` 修正普通模块展开合同；当前工作树又完成一轮既有模块正确性修复：条件分支恢复条件入口且不再把未完成分支编译成永真，多路分支改为 SugarCube 正确子标签语法，循环项限定在循环作用域，修改变量限制数字增减，选择的返回目标不再保留不可执行动作，模块选择器补齐中文分组并适配窄面板。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：时间系统纵向切片已完成（见下文「时间系统（阶段 10 之外的新功能）」），提交 hash 以 `git log` 为准。此前：阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并由提交 `d48a6fad` 修正普通模块展开合同；随后一轮既有模块正确性修复：条件分支恢复条件入口且不再把未完成分支编译成永真，多路分支改为 SugarCube 正确子标签语法，循环项限定在循环作用域，修改变量限制数字增减，选择的返回目标不再保留不可执行动作，模块选择器补齐中文分组并适配窄面板。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -349,6 +349,19 @@
 2. **10C**：把末尾追加改为任意合法位置 `insertAt(index)`；统一拖拽手柄并保留上移/下移与键盘移动，首版限制在同一 `BlockList` 内。
 3. **10D**：补齐引用视图、固定复杂验收段落和阶段 10 全部 7 类截图；复核真实 SugarCube、metadata round-trip 与地图连线不变。
 
+### 时间系统（阶段 10 之外的新功能，已完成）
+
+> 需求（用户）：游戏时间系统——一天分六个时段【清晨、上午、中午、下午、夜晚、深夜】；玩家触发部分选项/动作后推进时段；系统记录天数。已定案：时间推进**不自动发生**，由作者在每个「选择」上自由决定是否推进、推进几步；一键创建引擎代码；仅选择块可触发推进。
+
+完成情况（提交见 `git log`）：
+
+- **新动作类型 `advanceTime`**（`VisualStateAction.operation`）：`value` 存步数；编译为链接 setter 内的函数调用 `setup.time.advance(n)`（SugarCube setter 支持表达式调用，无需 `<<run>>`）；不引用任何状态，`stripStateReferences` / `isActionCompatible` 均跳过；back/return 清动作的既有逻辑同样清掉它。
+- **一键创建时间系统**（工具栏新按钮「时间系统」，时钟图标，位于「故事变量」旁）：单个 `updateStory` 动作（可整体撤销）完成——补齐 `day`（数字，默认 1）/ `period`（数字，默认 0）两个故事状态（按名称判重）；缺 StoryInit 时创建并让初始化块归位（复用 `compileStateInitialization` + 全量重编译）；把时间引擎（`setup.time`，含 marker 注释 `/* twine-time-system */`，重复创建不重复注入）写入 `story.script`；缺 StoryCaption 时创建可视化段落显示「第 <<=$day>> 天 · <<=setup.time.current()>>」。已存在时重复点击改为高亮 StoryCaption。
+- **编辑器 UI**：动作操作下拉新增「推进时间」（无条件显示）；选中后隐藏状态选择与通用值输入，改为步数输入框（>=1，0/非数字兜底为 1）；无任何故事状态时「添加操作」不再禁用，默认添加 `advanceTime` 动作；人话句「点击后：时间推进 N 个时段」。
+- **引擎**（写入故事脚本，作者可改）：`setup.time.advance(n)` 推进 n 段，深夜后回清晨、天数 +1；`setup.time.current()` 返回当前时段中文名。引擎硬编码读写 `$day`/`$period`（与一键创建的状态同名，作者改名/删除状态则时间失效，属已知不做防御）。
+- **验收**：`npm run lint`、`npx tsc --noEmit` 通过；相关 jest 全绿（visual-passage 40、visual-editor-metadata 10、create-time-system 9 新增、passage-visual-editor 51、story-states-manager 13/14——剩余 1 个失败为既有 `leaves loop item variable blocks untouched`，原始 HEAD 上同样失败，非本次引入）；Web 实测（Playwright）：一键创建 → 状态面板出现 day/period → 选择块加推进时间动作 → 生成 `[[继续探索->未命名片段][setup.time.advance(1)]]` → 发布 HTML 含引擎/初始化/顶栏 → 真实 SugarCube 试玩 6 次点击依次 清晨→…→深夜→第 2 天·清晨→上午。
+- **保持不变**：`VisualPassageContentV2` schema 版本、发布/导入 metadata 结构（advanceTime 随 spread 原样往返）。
+
 ### 阶段 10 之后：新模块候选池（方向记录，未排期、未实现）
 
 > 以下能力来自参考图启发，只记录为后续产品探索方向。它们不属于当前能力、不属于阶段 10 DoD，也不代表已经决定数据模型或 SugarCube 编译方案。任何候选进入实现前，都必须先补齐 WHEN / READS / WRITES / OUTPUT / CODE / REFERENCES 契约、持久化方案、真实运行检查和人工验收场景。
@@ -423,6 +436,8 @@
 | `src/dialogs/story-states/story-states-manager.tsx` | 故事状态管理（全局状态增删改 + 级联清理重编译） |
 | `src/dialogs/story-states/story-states-dialog.tsx` | 故事状态对话框（故事级，工具栏按钮打开） |
 | `src/routes/story-edit/toolbar/story-states-button.tsx` | 工具栏「故事状态」入口按钮 |
+| `src/routes/story-edit/toolbar/create-time-system-button.tsx` | 工具栏「时间系统」一键创建按钮 |
+| `src/store/stories/action-creators/create-time-system.ts` | 时间系统一键创建（day/period 状态 + StoryInit + story.script 引擎 + StoryCaption，单动作可撤销） |
 | `src/dialogs/passage-edit/passage-edit-contents.tsx` | 图形/源码编辑器分流 |
 | `src/dialogs/passage-edit/passage-edit-stack.tsx` | 单段落停靠式编辑栈 |
 | `src/dialogs/context/action-creators.ts` | 打开段落编辑器的对话框动作 |

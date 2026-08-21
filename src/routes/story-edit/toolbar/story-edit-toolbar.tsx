@@ -4,6 +4,7 @@ import {RouteToolbar} from '../../../components/route-toolbar';
 import {AppActions, BuildActions} from '../../../route-actions';
 import {Story} from '../../../store/stories';
 import {Point} from '../../../util/geometry';
+import {CreateTimeSystemButton} from './create-time-system-button';
 import {PassageActions} from './passage/passage-actions';
 import {StoryActions} from './story/story-actions';
 import {StoryStatesButton} from './story-states-button';
@@ -26,6 +27,7 @@ export const StoryEditToolbar: React.FC<StoryEditToolbarProps> = props => {
 				<>
 					<ZoomButtons story={story} />
 					<StoryStatesButton story={story} />
+					<CreateTimeSystemButton story={story} />
 					<UndoRedoButtons />
 				</>
 			}

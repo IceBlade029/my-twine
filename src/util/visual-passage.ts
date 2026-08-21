@@ -114,6 +114,13 @@ export function compileExpression(
 }
 
 function compileAction(action: VisualStateAction, states: VisualStoryState[]) {
+	// The time-system action references no state: it calls the story-level
+	// time engine installed in the story's JavaScript (see
+	// create-time-system.ts). The value is the number of periods advanced.
+	if (action.operation === 'advanceTime') {
+		return `setup.time.advance(${Number(action.value) || 1})`;
+	}
+
 	const state = states.find(item => item.id === action.stateId);
 
 	if (!state) {

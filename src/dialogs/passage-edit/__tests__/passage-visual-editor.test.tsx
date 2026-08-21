@@ -1306,6 +1306,20 @@ describe('human-readable conditions and actions', () => {
 				states
 			)
 		).toBe('点击后：【Trust】加 『1』');
+		expect(
+			actionSentenceText(
+				tEn,
+				{operation: 'advanceTime', stateId: '', value: 2},
+				states
+			)
+		).toBe('After choosing: time advances 2 periods');
+		expect(
+			actionSentenceText(
+				tZh,
+				{operation: 'advanceTime', stateId: '', value: 0},
+				states
+			)
+		).toBe('点击后：时间推进 1 个时段');
 	});
 
 	it('evaluates expressions against simulated values', () => {
@@ -1467,6 +1481,95 @@ describe('human-readable conditions and actions', () => {
 		expect(select).not.toHaveTextContent(
 			'dialogs.passageEdit.visual.operationIncrease'
 		);
+	});
+
+	it('edits an advance-time action without needing any story state', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {states: [], version: 1};
+			setup.passages[1].name = 'Hallway';
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						actions: [
+							{operation: 'advanceTime', stateId: '', value: 2}
+						],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Sleep',
+						targetPassageId: setup.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		// advanceTime is offered in the operation dropdown.
+		const operation = screen.getByLabelText(
+			'dialogs.passageEdit.visual.actionOperation'
+		);
+
+		expect(operation).toHaveTextContent(
+			'dialogs.passageEdit.visual.operationAdvanceTime'
+		);
+
+		// The state selector and generic value input are replaced by a steps
+		// input, and the compiled setter calls the time engine.
+		expect(
+			screen.queryByLabelText('dialogs.passageEdit.visual.actionState')
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByLabelText('dialogs.passageEdit.visual.actionValue')
+		).not.toBeInTheDocument();
+		const steps = screen.getByLabelText(
+			'dialogs.passageEdit.visual.actionSteps'
+		);
+
+		expect(steps).toHaveValue(2);
+
+		// Editing the steps recompiles the setter.
+		fireEvent.change(steps, {target: {value: '3'}});
+		expect(passageText()).toHaveTextContent('setup.time.advance(3)');
+
+		// A zero or empty step count falls back to a single step.
+		fireEvent.change(steps, {target: {value: '0'}});
+		expect(passageText()).toHaveTextContent('setup.time.advance(1)');
+	});
+
+	it('adds an advance-time action when no story states exist', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {states: [], version: 1};
+			setup.passages[1].name = 'Hallway';
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						actions: [],
+						id: 'choice-1',
+						kind: 'choice',
+						label: 'Keep walking',
+						targetPassageId: setup.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+		const passageText = () =>
+			screen.getByTestId(`passage-${story.passages[0].id}`);
+
+		// The add-action button used to require a state; the time-system
+		// action makes it usable with an empty state list.
+		const addAction = screen.getByText(
+			'dialogs.passageEdit.visual.addAction'
+		);
+
+		expect(addAction).not.toBeDisabled();
+		fireEvent.click(addAction);
+
+		expect(passageText()).toHaveTextContent('setup.time.advance(1)');
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.actionSteps')
+		).toHaveValue(1);
 	});
 });
 

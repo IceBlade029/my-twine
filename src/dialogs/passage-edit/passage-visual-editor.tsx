@@ -694,6 +694,7 @@ function actionOperationWord(
 	operation: VisualStateAction['operation']
 ) {
 	const keys = {
+		advanceTime: 'dialogs.passageEdit.visual.operationAdvanceTime',
 		clear: 'dialogs.passageEdit.visual.operationClear',
 		decrease: 'dialogs.passageEdit.visual.operationDecrease',
 		increase: 'dialogs.passageEdit.visual.operationIncrease',
@@ -726,6 +727,13 @@ export function actionSentenceText(
 	action: VisualStateAction,
 	states: VisualStoryState[]
 ) {
+	// The time-system action references no state: it uses its own sentence.
+	if (action.operation === 'advanceTime') {
+		return t('dialogs.passageEdit.visual.actionSentenceAdvanceTime', {
+			count: Number(action.value) || 1
+		});
+	}
+
 	const state = states.find(item => item.id === action.stateId);
 
 	return t('dialogs.passageEdit.visual.actionSentence', {
@@ -1433,6 +1441,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					const state = states.find(item => item.id === action.stateId);
 					return (
 						<div className="action-row" key={actionIndex}>
+							{action.operation !== 'advanceTime' && (
 							<select
 								aria-label={t('dialogs.passageEdit.visual.actionState')}
 								onChange={event => {
@@ -1454,14 +1463,22 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 									<option key={item.id} value={item.id}>{item.name}</option>
 								))}
 							</select>
+							)}
 							<select
 								aria-label={t('dialogs.passageEdit.visual.actionOperation')}
 								onChange={event => {
 									const actions = [...(choice.actions ?? [])];
+									const operation = event.target
+										.value as VisualStateAction['operation'];
 									actions[actionIndex] = {
 										...action,
-										operation: event.target
-											.value as VisualStateAction['operation']
+										operation,
+										// The time-system action always holds a positive
+										// step count, whatever the previous operation held.
+										value:
+											operation === 'advanceTime'
+												? Math.max(Number(action.value) || 1, 1)
+												: action.value
 									};
 									onUpdate({actions});
 								}}
@@ -1469,6 +1486,9 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 							>
 								<option value="set">
 									{t('dialogs.passageEdit.visual.set')}
+								</option>
+								<option value="advanceTime">
+									{t('dialogs.passageEdit.visual.operationAdvanceTime')}
 								</option>
 								{state?.type === 'number' && (
 									<option value="increase">
@@ -1496,6 +1516,22 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 									</option>
 								)}
 							</select>
+							{action.operation === 'advanceTime' ? (
+								<input
+									aria-label={t('dialogs.passageEdit.visual.actionSteps')}
+									min={1}
+									onChange={event => {
+										const actions = [...(choice.actions ?? [])];
+										actions[actionIndex] = {
+											...action,
+											value: Math.max(Number(event.target.value) || 1, 1)
+										};
+										onUpdate({actions});
+									}}
+									type="number"
+									value={String(Number(action.value) || 1)}
+								/>
+							) : (
 							<StateValueInput
 								label={t('dialogs.passageEdit.visual.actionValue')}
 								onChange={value => {
@@ -1506,6 +1542,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 								state={state}
 								value={action.value}
 							/>
+							)}
 							<button
 								onClick={() =>
 									onUpdate({
@@ -1520,17 +1557,22 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					);
 					})}
 					<button
-					disabled={states.length === 0}
 					onClick={() => {
 						const state = states[0];
 						onUpdate({
 							actions: [
 								...(choice.actions ?? []),
-								{
-									stateId: state.id,
-									operation: 'set',
-									value: stateValuePlaceholder(state)
-								}
+								state
+									? {
+											stateId: state.id,
+											operation: 'set',
+											value: stateValuePlaceholder(state)
+										}
+									: {
+											stateId: '',
+											operation: 'advanceTime',
+											value: 1
+										}
 							]
 						});
 					}}

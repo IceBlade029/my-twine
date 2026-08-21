@@ -153,6 +153,12 @@ export function isActionCompatible(
 	action: VisualStateAction,
 	state?: VisualStoryState
 ) {
+	// The time-system action references no state: it survives state type
+	// changes and even the deletion of every state.
+	if (action.operation === 'advanceTime') {
+		return true;
+	}
+
 	if (!state) {
 		return false;
 	}

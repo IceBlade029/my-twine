@@ -1394,8 +1394,18 @@ describe('phase 10D dependencies and runtime differences', () => {
 			};
 		});
 		const view = container.querySelector('.passage-dependencies') as HTMLElement;
+		const toggle = within(view).getByRole('button', {expanded: false});
 
 		expect(within(view).getByText('dialogs.passageEdit.visual.dependenciesTitle')).toBeInTheDocument();
+		expect(view).toHaveClass('is-collapsed');
+		expect(view.querySelector('.dependency-list')).not.toBeInTheDocument();
+		expect(
+			within(view).getByText('dialogs.passageEdit.visual.dependenciesPassageCount')
+		).toBeInTheDocument();
+
+		fireEvent.click(toggle);
+		expect(toggle).toHaveAttribute('aria-expanded', 'true');
+		expect(view).toHaveClass('is-expanded');
 		expect(within(view).getAllByText('Hallway')).toHaveLength(2);
 		expect(
 			within(view).getByText('dialogs.passageEdit.visual.dependencyReferencedBy')
@@ -1421,6 +1431,10 @@ describe('phase 10D dependencies and runtime differences', () => {
 			)
 		);
 		expect(container.querySelector('.dependency-backpack')).toHaveClass('is-ready');
+
+		fireEvent.click(toggle);
+		expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		expect(view.querySelector('.dependency-list')).not.toBeInTheDocument();
 	});
 
 	it('turns duplicate backpack entries into per-item quantity changes', () => {
@@ -1437,9 +1451,9 @@ describe('phase 10D dependencies and runtime differences', () => {
 	});
 });
 
-describe('module selector (P2)', () => {
+	describe('module selector (P2)', () => {
 	it('opens the grouped selector from the visible end insertion button', () => {
-		const {story} = renderComponent();
+		const {container, story} = renderComponent();
 
 		// No permanent per-kind add buttons remain; the visible end insertion
 		// button opens the shared selector.
@@ -1451,11 +1465,20 @@ describe('module selector (P2)', () => {
 			screen.getByText('dialogs.passageEdit.visual.addModule')
 		);
 
-		// The selector is grouped: 常用 holds the text/choice/branch/set.
+		// The selector is grouped: 常用 holds text/choice/set, while branch only
+		// appears once under 控制流.
 		const groups = screen.getAllByText(
 			'dialogs.passageEdit.visual.selectorGroupCommon'
 		);
 		expect(groups.length).toBeGreaterThanOrEqual(1);
+		const commonGroup = groups[0].closest('.module-group') as HTMLElement;
+		expect(
+			within(commonGroup).queryByText('dialogs.passageEdit.visual.blockKindBranch')
+		).not.toBeInTheDocument();
+		expect(container.querySelectorAll('.module-entry-branch')).toHaveLength(1);
+		expect(container.querySelectorAll('.module-entry-icon')).toHaveLength(
+			container.querySelectorAll('.module-entry').length
+		);
 		expect(
 			screen.getByText('dialogs.passageEdit.visual.blockKindChoice')
 		).toBeInTheDocument();

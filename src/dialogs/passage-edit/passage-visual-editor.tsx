@@ -161,12 +161,6 @@ const moduleGroups: {titleKey: string; entries: ModuleEntry[]}[] = [
 					'dialogs.passageEdit.visual.moduleChoiceDescription'
 			},
 			{
-				kind: 'branch',
-				labelKey: 'dialogs.passageEdit.visual.blockKindBranch',
-				aliases: ['if'],
-				descriptionKey: 'dialogs.passageEdit.visual.moduleBranchDescription'
-			},
-			{
 				kind: 'set',
 				labelKey: 'dialogs.passageEdit.visual.blockKindSet',
 				aliases: ['set', 'variable'],
@@ -4106,14 +4100,16 @@ const ModuleSelector: React.FC<ModuleSelectorProps> = props => {
 							{group.entries.map((entry, entryIndex) => {
 								const isDisabled =
 									disabled || moduleEntryDisabled(entry, states);
+								const KindIcon = blockKindMeta[entry.kind].icon;
 
 								return (
 									<button
 										className={
 											isDisabled
-												? 'module-entry is-disabled'
-												: 'module-entry'
+												? `module-entry module-entry-${entry.kind} is-disabled`
+												: `module-entry module-entry-${entry.kind}`
 										}
+										data-kind={entry.kind}
 										disabled={isDisabled}
 										key={`${group.titleKey}-${entry.kind}-${entryIndex}`}
 										onClick={() => onInsert(entry.kind)}
@@ -4126,14 +4122,21 @@ const ModuleSelector: React.FC<ModuleSelectorProps> = props => {
 										}
 										type="button"
 									>
-										<span className="module-entry-label">
-											{t(entry.labelKey)}
+										<span aria-hidden="true" className="module-entry-icon">
+											<KindIcon />
 										</span>
-										<span className="module-entry-alias">
-											{entry.aliases[0]}
-										</span>
-										<span className="module-entry-description">
-											{t(entry.descriptionKey)}
+										<span className="module-entry-content">
+											<span className="module-entry-heading">
+												<span className="module-entry-label">
+													{t(entry.labelKey)}
+												</span>
+												<span className="module-entry-alias">
+													{entry.aliases[0]}
+												</span>
+											</span>
+											<span className="module-entry-description">
+												{t(entry.descriptionKey)}
+											</span>
 										</span>
 									</button>
 								);
@@ -4316,6 +4319,7 @@ const PassageDependencies: React.FC<PassageDependenciesProps> = props => {
 	const {blocks, disabled, passage, story} = props;
 	const {dispatch, stories} = useUndoableStoriesContext();
 	const {t} = useTranslation();
+	const [expanded, setExpanded] = React.useState(false);
 	const states = story.visual?.states ?? [];
 	const analysis = React.useMemo(
 		() => analyzePassageDependencies(blocks, states),
@@ -4348,6 +4352,9 @@ const PassageDependencies: React.FC<PassageDependenciesProps> = props => {
 		Number(hasBackpack) +
 		analysis.rawBlockCount +
 		analysis.unknownExpressionCount;
+	const passageCount = analysis.passageIds.length + referencedBy.length;
+	const systemCount = Number(hasTime) + Number(hasBackpack);
+	const unknownCount = analysis.rawBlockCount + analysis.unknownExpressionCount;
 
 	function locatePassage(id: string) {
 		if (story.passages.some(passage => passage.id === id)) {
@@ -4392,12 +4399,27 @@ const PassageDependencies: React.FC<PassageDependenciesProps> = props => {
 	}
 
 	return (
-		<section className="passage-dependencies">
-			<div className="section-heading dependency-heading">
-				<h3>{t('dialogs.passageEdit.visual.dependenciesTitle')}</h3>
-				<span>{t('dialogs.passageEdit.visual.dependenciesCount', {count: total})}</span>
-			</div>
-			{total === 0 ? (
+		<section className={`passage-dependencies${expanded ? ' is-expanded' : ' is-collapsed'}`}>
+			<button
+				aria-expanded={expanded}
+				className="dependency-toggle"
+				onClick={() => setExpanded(value => !value)}
+				type="button"
+			>
+				<span className="dependency-title">
+					<IconFileImport />
+					<h3>{t('dialogs.passageEdit.visual.dependenciesTitle')}</h3>
+				</span>
+				<span className="dependency-summary">
+					<span>{t('dialogs.passageEdit.visual.dependenciesCount', {count: total})}</span>
+					{passageCount > 0 && <span>{t('dialogs.passageEdit.visual.dependenciesPassageCount', {count: passageCount})}</span>}
+					{analysis.stateIds.length > 0 && <span>{t('dialogs.passageEdit.visual.dependenciesStateCount', {count: analysis.stateIds.length})}</span>}
+					{systemCount > 0 && <span>{t('dialogs.passageEdit.visual.dependenciesSystemCount', {count: systemCount})}</span>}
+					{unknownCount > 0 && <span className="is-unknown">{t('dialogs.passageEdit.visual.dependenciesUnknownCount', {count: unknownCount})}</span>}
+				</span>
+				{expanded ? <IconChevronUp /> : <IconChevronDown />}
+			</button>
+			{expanded && (total === 0 ? (
 				<p className="empty-state">
 					{t('dialogs.passageEdit.visual.noDependencies')}
 				</p>
@@ -4522,7 +4544,7 @@ const PassageDependencies: React.FC<PassageDependenciesProps> = props => {
 						</article>
 					)}
 				</div>
-			)}
+			))}
 		</section>
 	);
 };

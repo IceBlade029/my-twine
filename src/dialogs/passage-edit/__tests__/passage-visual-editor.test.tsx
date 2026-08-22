@@ -975,7 +975,7 @@ describe('phase 10B visual structure', () => {
 		expect(container.querySelectorAll('.block-kind-choice')).toHaveLength(3);
 	});
 
-	it('repairs a partial time system from its story-level status card', () => {
+	it('does not show story-level system management inside a Passage', () => {
 		const {container} = renderComponent(story => {
 			story.visual = {
 				states: [
@@ -985,15 +985,7 @@ describe('phase 10B visual structure', () => {
 				version: 1
 			};
 		});
-		const timeCard = container.querySelector('.system-card.system-time') as HTMLElement;
-
-		expect(timeCard).toHaveClass('is-incomplete');
-		fireEvent.click(
-			within(timeCard).getByText('dialogs.passageEdit.visual.repairSystem')
-		);
-		expect(container.querySelector('.system-card.system-time')).toHaveClass(
-			'is-ready'
-		);
+		expect(container.querySelector('.story-systems-overview')).not.toBeInTheDocument();
 	});
 
 	it('adds a requested item quantity and derives a grouped summary', () => {

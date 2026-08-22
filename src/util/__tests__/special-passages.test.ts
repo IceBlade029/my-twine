@@ -1,4 +1,5 @@
 import {
+	SPECIAL_PASSAGE_NAMES,
 	SPECIAL_PASSAGES,
 	specialPassageMeta
 } from '../special-passages';
@@ -6,15 +7,18 @@ import {
 describe('specialPassageMeta', () => {
 	it('returns metadata for every known special passage name', () => {
 		for (const name of [
-			'StoryTitle',
+			'StoryDisplayTitle',
 			'StoryAuthor',
 			'StorySubtitle',
+			'StoryBanner',
 			'StoryInit',
 			'StoryCaption',
 			'StoryMenu',
 			'PassageHeader',
 			'PassageFooter',
-			'PassageDone'
+			'PassageReady',
+			'PassageDone',
+			'StoryInterface'
 		]) {
 			const meta = specialPassageMeta(name);
 
@@ -38,17 +42,11 @@ describe('specialPassageMeta', () => {
 
 	it('exposes the same set of names in the registry', () => {
 		expect(Object.keys(SPECIAL_PASSAGES).sort()).toEqual(
-			[
-				'PassageDone',
-				'PassageFooter',
-				'PassageHeader',
-				'StoryAuthor',
-				'StoryCaption',
-				'StoryInit',
-				'StoryMenu',
-				'StorySubtitle',
-				'StoryTitle'
-			].sort()
+			[...SPECIAL_PASSAGE_NAMES].sort()
 		);
+	});
+
+	it('does not treat the Twine 2 project title as a SugarCube code passage', () => {
+		expect(specialPassageMeta('StoryTitle')).toBeUndefined();
 	});
 });

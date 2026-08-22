@@ -38,6 +38,13 @@ describe('<StoryActions>', () => {
 		).toBeInTheDocument();
 	});
 
+	it('displays the story systems and global content entry', async () => {
+		await renderComponent();
+		expect(
+			screen.getByText('routes.storyEdit.toolbar.storyStructure')
+		).toBeInTheDocument();
+	});
+
 	it('displays a story rename button that renames the story', async () => {
 		const story = fakeStory();
 

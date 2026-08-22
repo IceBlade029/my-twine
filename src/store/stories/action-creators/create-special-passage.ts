@@ -49,7 +49,9 @@ export function createSpecialPassage(
 			story: story.id,
 			name,
 			id,
-			visual: emptyVisualPassage()
+			...(name === 'StoryInterface'
+				? {text: '<div id="passages" aria-live="polite"></div>'}
+				: {visual: emptyVisualPassage()})
 		}
 	};
 }

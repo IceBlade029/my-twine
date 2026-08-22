@@ -58,92 +58,6 @@
 	justify-content: flex-end;
 }
 
-.story-systems-overview {
-	background: color-mix(in srgb, var(--background) 94%, var(--visual-tone-navigation));
-	border: 1px solid var(--light-gray);
-	border-radius: var(--corner-round);
-	display: flex;
-	flex-direction: column;
-	gap: var(--grid-size);
-	padding: var(--grid-size);
-}
-
-.system-overview-heading,
-.system-card-title {
-	align-items: center;
-	display: flex;
-	gap: var(--grid-size);
-	justify-content: space-between;
-}
-
-.system-overview-heading > span,
-.system-artifacts,
-.system-usage {
-	color: var(--gray);
-	font-size: 0.82em;
-}
-
-.system-card-list {
-	display: grid;
-	gap: var(--grid-size);
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.system-card {
-	--system-tone: var(--visual-tone-navigation);
-	align-items: center;
-	background: color-mix(in srgb, var(--background) 94%, var(--system-tone));
-	border: 1px solid color-mix(in srgb, var(--light-gray) 65%, var(--system-tone));
-	border-left: 3px solid var(--system-tone);
-	border-radius: var(--corner-round);
-	display: grid;
-	gap: var(--grid-size);
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	padding: calc(var(--grid-size) * 0.75);
-}
-
-.system-card.system-time {
-	--system-tone: var(--visual-tone-time);
-}
-
-.system-card.system-backpack {
-	--system-tone: var(--visual-tone-state);
-}
-
-.system-card.is-incomplete {
-	border-style: dashed;
-}
-
-.system-card.is-missing {
-	filter: saturate(0.55);
-}
-
-.system-card-icon,
-.system-status {
-	align-items: center;
-	color: var(--system-tone);
-	display: inline-flex;
-	gap: calc(var(--grid-size) / 2);
-}
-
-.system-card-icon svg,
-.system-status svg {
-	height: 1.1em;
-	width: 1.1em;
-}
-
-.system-card-content {
-	display: flex;
-	flex-direction: column;
-	gap: calc(var(--grid-size) / 3);
-	min-width: 0;
-}
-
-.system-status {
-	font-size: 0.78em;
-	font-weight: normal;
-}
-
 .save-indicator {
 	color: var(--gray);
 	font-size: 0.9em;
@@ -1281,7 +1195,6 @@
 }
 
 @container passage-editor (max-width: 28rem) {
-	.system-card-list,
 	.choice-detail-grid,
 	.choice-route-grid {
 		grid-template-columns: minmax(0, 1fr);

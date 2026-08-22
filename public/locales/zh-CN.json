@@ -537,6 +537,30 @@
 		"storyStates": {
 			"title": "故事变量"
 		},
+		"storyStructure": {
+			"title": "故事系统与全局内容",
+			"intro": "这里管理整个故事共享的变量、系统能力、界面插槽和 SugarCube 运行时挂载点。普通片段只显示自己实际使用的依赖。",
+			"systemsAndCapabilities": "系统与能力",
+			"systemsHint": "系统提供状态、条件、动作和运行时生成物，不属于任何单个片段。",
+			"storyVariables": "故事变量",
+			"variableCount": "{{count}} 个变量",
+			"timeSystemSummary": "2 个变量 · 2 个全局片段 · 1 个引擎",
+			"backpackSystemSummary": "1 个变量 · 3 个全局片段",
+			"manage": "管理",
+			"enable": "启用",
+			"repair": "修复",
+			"locate": "定位",
+			"created": "已创建",
+			"notCreated": "未创建",
+			"createAndEdit": "创建",
+			"storyInformation": "故事信息",
+			"storyInformationHint": "按需创建标题、作者等 SugarCube 界面内容；故事项目名称仍在重命名功能中管理。",
+			"globalInterface": "全局界面",
+			"globalInterfaceHint": "这些内容会出现在侧栏、菜单或每个普通片段的前后。",
+			"runtimeAdvanced": "运行时与高级",
+			"runtimeAdvancedHint": "初始化和生命周期挂载点只在确实需要全局行为时创建。",
+			"storyInterfaceWarning": "高级：该 Passage 会替换 SugarCube 默认故事界面。"
+		},
 		"storyStylesheet": {
 			"editorLabel": "故事样式表",
 			"title": "故事样式表",
@@ -601,7 +625,7 @@
 				"findAndReplace": "查找替换",
 				"goTo": "跳转到",
 				"javaScript": "JavaScript",
-				"newSpecialPassage": "新建特殊段落：{{label}}",
+				"storyStructure": "系统与全局内容",
 				"passageTags": "片段标签",
 				"snapToGrid": "对齐到网格",
 				"startStoryHere": "从这里开始故事",
@@ -616,15 +640,6 @@
 				"proofStory": "查看校对版本",
 				"publishToFile": "发布到文件",
 				"selectAllPassages": "选择所有片段"
-			},
-			"storyStatesButton": {
-				"label": "故事变量"
-			},
-			"backpackSystemButton": {
-				"label": "背包系统"
-			},
-			"timeSystemButton": {
-				"label": "时间系统"
 			},
 			"zoomButtons": {
 				"storyStructure": "仅显示故事结构",
@@ -714,9 +729,9 @@
 		}
 	},
 	"specialPassages": {
-		"StoryTitle": {
-			"label": "标题",
-			"description": "作为故事标题显示。"
+		"StoryDisplayTitle": {
+			"label": "显示标题",
+			"description": "设置 SugarCube 界面栏显示的故事标题。"
 		},
 		"StoryAuthor": {
 			"label": "作者",
@@ -725,6 +740,10 @@
 		"StorySubtitle": {
 			"label": "副标题",
 			"description": "作为故事副标题显示。"
+		},
+		"StoryBanner": {
+			"label": "横幅",
+			"description": "显示在 SugarCube 侧栏的故事横幅区域。"
 		},
 		"StoryInit": {
 			"label": "初始",
@@ -746,9 +765,17 @@
 			"label": "段尾",
 			"description": "显示在每个段落结尾。"
 		},
+		"PassageReady": {
+			"label": "显示前",
+			"description": "每次片段完成渲染但尚未显示前运行，不产生输出。"
+		},
 		"PassageDone": {
 			"label": "段后",
 			"description": "每个段落渲染后运行。"
+		},
+		"StoryInterface": {
+			"label": "自定义故事界面",
+			"description": "用原始 HTML 替换 SugarCube 默认故事界面。"
 		}
 	},
 	"undoChange": {

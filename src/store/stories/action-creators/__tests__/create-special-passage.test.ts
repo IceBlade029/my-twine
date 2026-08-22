@@ -33,6 +33,15 @@ describe('createSpecialPassage', () => {
 		expect(action.props.visual).toEqual({blocks: [], version: 2});
 	});
 
+	it('creates StoryInterface as raw HTML with the required passages mount', () => {
+		const action = createSpecialPassage(story, 'StoryInterface');
+
+		expect(action.props.visual).toBeUndefined();
+		expect(action.props.text).toBe(
+			'<div id="passages" aria-live="polite"></div>'
+		);
+	});
+
 	it('places the passage below the lowest existing passage', () => {
 		const action = createSpecialPassage(story, 'StoryMenu');
 

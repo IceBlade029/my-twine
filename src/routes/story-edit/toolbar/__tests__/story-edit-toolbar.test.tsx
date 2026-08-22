@@ -65,6 +65,19 @@ describe('<StoryEditToolbar>', () => {
 		).toBeInTheDocument();
 	});
 
+	it('does not pin story systems into the global toolbar', async () => {
+		await renderComponent();
+		expect(
+			screen.queryByText('routes.storyEdit.storyStatesButton.label')
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText('routes.storyEdit.timeSystemButton.label')
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText('routes.storyEdit.backpackSystemButton.label')
+		).not.toBeInTheDocument();
+	});
+
 	it('is accessible', async () => {
 		const {container} = await renderComponent();
 

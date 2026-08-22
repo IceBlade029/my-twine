@@ -4149,11 +4149,6 @@ const ModuleSelector: React.FC<ModuleSelectorProps> = props => {
 	);
 };
 
-interface StorySystemsOverviewProps {
-	disabled?: boolean;
-	story: Story;
-}
-
 export interface PassageDependencyAnalysis {
 	backpackActionCount: number;
 	backpackExpressionCount: number;
@@ -4282,30 +4277,6 @@ export function analyzePassageDependencies(
 		timeActionCount,
 		unknownExpressionCount
 	};
-}
-
-function storyDomainUsage(story: Story) {
-	return story.passages.reduce(
-		(total, passage) => {
-			if (!passage.visual) {
-				return total;
-			}
-
-			const analysis = analyzePassageDependencies(
-				migrateVisualContent(passage.visual).blocks,
-				story.visual?.states ?? []
-			);
-
-			return {
-				backpack:
-					total.backpack +
-					analysis.backpackActionCount +
-					analysis.backpackExpressionCount,
-				time: total.time + analysis.timeActionCount
-			};
-		},
-		{backpack: 0, time: 0}
-	);
 }
 
 interface PassageDependenciesProps {
@@ -4549,116 +4520,6 @@ const PassageDependencies: React.FC<PassageDependenciesProps> = props => {
 	);
 };
 
-/** Compact story-level status cards for the two installed domain systems. */
-const StorySystemsOverview: React.FC<StorySystemsOverviewProps> = props => {
-	const {disabled, story} = props;
-	const {dispatch, stories} = useUndoableStoriesContext();
-	const {t} = useTranslation();
-	const time = timeSystemStatus(story);
-	const backpack = backpackSystemStatus(story);
-	const usage = storyDomainUsage(story);
-
-	function statusLabel(status: 'missing' | 'incomplete' | 'ready') {
-		return t(`dialogs.passageEdit.visual.systemStatus.${status}`);
-	}
-
-	function locate(name: string) {
-		const target = story.passages.find(passage => passage.name === name);
-
-		if (target) {
-			dispatch(highlightPassages(story, [target.id]));
-		}
-	}
-
-	return (
-		<section className="story-systems-overview">
-			<div className="system-overview-heading">
-				<strong>{t('dialogs.passageEdit.visual.storySystems')}</strong>
-				<span>{t('dialogs.passageEdit.visual.storySystemsHint')}</span>
-			</div>
-			<div className="system-card-list">
-				<article className={`system-card system-time is-${time.state}`}>
-					<div className="system-card-icon"><IconClock /></div>
-					<div className="system-card-content">
-						<div className="system-card-title">
-							<strong>{t('dialogs.passageEdit.visual.timeSystem')}</strong>
-							<span className="system-status">
-								{time.state === 'ready' ? <IconCheck /> : <IconAlertTriangle />}
-								{statusLabel(time.state)}
-							</span>
-						</div>
-						<span className="system-artifacts">
-							{t('dialogs.passageEdit.visual.timeSystemArtifacts')}
-						</span>
-						<span className="system-usage">
-							{t('dialogs.passageEdit.visual.systemUsageCount', {count: usage.time})}
-						</span>
-					</div>
-					{time.state === 'ready' ? (
-						<button disabled={disabled} onClick={() => locate('StoryCaption')} type="button">
-							{t('dialogs.passageEdit.visual.locateSystem')}
-						</button>
-					) : (
-						<button
-							disabled={disabled}
-							onClick={() =>
-								dispatch(createTimeSystem(stories, story), 'undoChange.createTimeSystem')
-							}
-							type="button"
-						>
-							{t(
-								time.state === 'missing'
-									? 'dialogs.passageEdit.visual.createSystem'
-									: 'dialogs.passageEdit.visual.repairSystem'
-							)}
-						</button>
-					)}
-				</article>
-				<article className={`system-card system-backpack is-${backpack.state}`}>
-					<div className="system-card-icon"><IconBackpack /></div>
-					<div className="system-card-content">
-						<div className="system-card-title">
-							<strong>{t('dialogs.passageEdit.visual.backpackSystem')}</strong>
-							<span className="system-status">
-								{backpack.state === 'ready' ? <IconCheck /> : <IconAlertTriangle />}
-								{statusLabel(backpack.state)}
-							</span>
-						</div>
-						<span className="system-artifacts">
-							{t('dialogs.passageEdit.visual.backpackSystemArtifacts')}
-						</span>
-						<span className="system-usage">
-							{t('dialogs.passageEdit.visual.systemUsageCount', {count: usage.backpack})}
-						</span>
-					</div>
-					{backpack.state === 'ready' ? (
-						<button disabled={disabled} onClick={() => locate('背包')} type="button">
-							{t('dialogs.passageEdit.visual.locateSystem')}
-						</button>
-					) : (
-						<button
-							disabled={disabled}
-							onClick={() =>
-								dispatch(
-									createBackpackSystem(stories, story),
-									'undoChange.createBackpackSystem'
-								)
-							}
-							type="button"
-						>
-							{t(
-								backpack.state === 'missing'
-									? 'dialogs.passageEdit.visual.createSystem'
-									: 'dialogs.passageEdit.visual.repairSystem'
-							)}
-						</button>
-					)}
-				</article>
-			</div>
-		</section>
-	);
-};
-
 export interface PassageVisualEditorProps {
 	disabled?: boolean;
 	passage: Passage & {visual: VisualPassageContent};
@@ -4865,7 +4726,6 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 						: t('dialogs.passageEdit.visual.saved')}
 				</span>
 			</div>
-			<StorySystemsOverview disabled={disabled} story={story} />
 			{passage.name === 'StoryInit' && states.length > 0 && (
 				<section className="story-init-preview">
 					<div className="section-heading">

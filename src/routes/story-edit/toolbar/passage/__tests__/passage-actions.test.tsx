@@ -1,4 +1,4 @@
-import {act, fireEvent, render, screen, within} from '@testing-library/react';
+import {act, fireEvent, render, screen} from '@testing-library/react';
 import {axe} from 'jest-axe';
 import * as React from 'react';
 import {useStoriesContext} from '../../../../../store/stories';
@@ -47,50 +47,11 @@ describe('<PassageActions>', () => {
 		expect(screen.getByText('common.new')).toBeInTheDocument();
 	});
 
-	it('displays a special passage button that creates a special passage', async () => {
-		const story = fakeStory(0);
-		await renderComponent({story}, {stories: [story]});
-
-		// The mock menu button renders each item as a button; the first one
-		// corresponds to StoryTitle (registry insertion order).
+	it('does not expose story-global special passages in the Passage toolbar', async () => {
+		await renderComponent();
 		expect(
-			screen.getByTestId(
-				`mock-menu-button-${'routes.storyEdit.toolbar.newSpecialPassage'}`
-			)
-		).toBeInTheDocument();
-
-		// Click the first menu item (StoryTitle).
-		const menuItems = within(
-			screen.getByTestId(
-				`mock-menu-button-${'routes.storyEdit.toolbar.newSpecialPassage'}`
-			)
-		).getAllByRole('button');
-		fireEvent.click(menuItems[0]);
-
-		expect(
-			document.querySelector('[data-testid^="passage-"][data-name="StoryTitle"]')
-		).toBeInTheDocument();
-	});
-
-	it('highlights an existing special passage instead of creating a duplicate', async () => {
-		const story = fakeStory(1);
-		story.passages[0].name = 'StoryTitle';
-		story.passages[0].highlighted = false;
-		await renderComponent({story}, {stories: [story]});
-
-		const menuItems = within(
-			screen.getByTestId(
-				`mock-menu-button-${'routes.storyEdit.toolbar.newSpecialPassage'}`
-			)
-		).getAllByRole('button');
-		fireEvent.click(menuItems[0]);
-
-		// Only one passage should exist, and it should now be highlighted.
-		const passages = document.querySelectorAll('[data-testid^="passage-"]');
-		expect(passages.length).toBe(1);
-		expect(
-			document.querySelector('[data-testid^="passage-"][data-name="StoryTitle"]')
-		).toHaveAttribute('data-highlighted', 'true');
+			screen.queryByText('routes.storyEdit.toolbar.newSpecialPassage')
+		).not.toBeInTheDocument();
 	});
 
 	it('displays a passage edit button', async () => {

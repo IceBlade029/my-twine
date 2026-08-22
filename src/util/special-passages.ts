@@ -3,13 +3,30 @@
  * passage name. Each entry maps to a locale key for a short role label and a
  * one-line description (both translated at render time).
  */
+export const SPECIAL_PASSAGE_NAMES = [
+	'StoryDisplayTitle',
+	'StoryAuthor',
+	'StorySubtitle',
+	'StoryBanner',
+	'StoryInit',
+	'StoryCaption',
+	'StoryMenu',
+	'PassageHeader',
+	'PassageFooter',
+	'PassageReady',
+	'PassageDone',
+	'StoryInterface'
+] as const;
+
+export type SpecialPassageName = (typeof SPECIAL_PASSAGE_NAMES)[number];
+
 export const SPECIAL_PASSAGES: Record<
-	string,
+	SpecialPassageName,
 	{labelKey: string; descriptionKey: string}
 > = {
-	StoryTitle: {
-		labelKey: 'specialPassages.StoryTitle.label',
-		descriptionKey: 'specialPassages.StoryTitle.description'
+	StoryDisplayTitle: {
+		labelKey: 'specialPassages.StoryDisplayTitle.label',
+		descriptionKey: 'specialPassages.StoryDisplayTitle.description'
 	},
 	StoryAuthor: {
 		labelKey: 'specialPassages.StoryAuthor.label',
@@ -18,6 +35,10 @@ export const SPECIAL_PASSAGES: Record<
 	StorySubtitle: {
 		labelKey: 'specialPassages.StorySubtitle.label',
 		descriptionKey: 'specialPassages.StorySubtitle.description'
+	},
+	StoryBanner: {
+		labelKey: 'specialPassages.StoryBanner.label',
+		descriptionKey: 'specialPassages.StoryBanner.description'
 	},
 	StoryInit: {
 		labelKey: 'specialPassages.StoryInit.label',
@@ -39,9 +60,17 @@ export const SPECIAL_PASSAGES: Record<
 		labelKey: 'specialPassages.PassageFooter.label',
 		descriptionKey: 'specialPassages.PassageFooter.description'
 	},
+	PassageReady: {
+		labelKey: 'specialPassages.PassageReady.label',
+		descriptionKey: 'specialPassages.PassageReady.description'
+	},
 	PassageDone: {
 		labelKey: 'specialPassages.PassageDone.label',
 		descriptionKey: 'specialPassages.PassageDone.description'
+	},
+	StoryInterface: {
+		labelKey: 'specialPassages.StoryInterface.label',
+		descriptionKey: 'specialPassages.StoryInterface.description'
 	}
 };
 
@@ -58,7 +87,7 @@ export interface SpecialPassageMeta {
 export function specialPassageMeta(
 	name: string
 ): SpecialPassageMeta | undefined {
-	const entry = SPECIAL_PASSAGES[name];
+	const entry = SPECIAL_PASSAGES[name as SpecialPassageName];
 
 	if (!entry) {
 		return undefined;

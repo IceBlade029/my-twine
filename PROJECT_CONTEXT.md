@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：阶段 10A–10D 已完成实现。10D 的“引用与依赖”区默认折叠，只显示总数及片段/状态/系统/未知粗略统计；点击标题整行展开完整依赖，再次点击收起。添加模块面板使用完全不透明的主题表面，每种模块由现有 SVG 图标、语义主题色、中文名、技术别名和简介组成；条件分支只保留在“控制流”，不再于“常用”重复。依赖、运行差异、`count` 分析及系统修复能力保持不变，`VisualPassageContentV2`、metadata schema、编译器、发布和导入格式均未改变。综合自动化与真实 Web 验收记录见本节后续条目；读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：阶段 10A–10D 已完成实现，并完成故事级信息架构收口。顶部不再固定放置“故事变量 / 时间系统 / 背包系统”，Passage 工具栏不再承载“新建特殊段落”，Passage 编辑区也不再显示整个故事的系统状态卡。统一入口位于“故事 → 系统与全局内容”，集中管理故事变量、系统能力和按需创建的 SugarCube 特殊 Passage；普通 Passage 只显示自身真实依赖。特殊 Passage 注册表已改为当前 SugarCube 2 精确名称，移除 Twine 2 中无效的 `StoryTitle`，新增 `StoryDisplayTitle`、`StoryBanner`、`PassageReady`、`StoryInterface`；不默认批量创建，`StoryInterface` 创建时使用含 `#passages` 挂载点的原始 HTML。依赖、运行差异、`count` 分析及系统修复能力保持不变，`VisualPassageContentV2`、metadata schema、编译器、发布和导入格式均未改变。综合自动化与真实 Web 验收记录见本节后续条目；读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -370,11 +370,20 @@
 阶段 10D 完成情况：
 
 - **同源引用/依赖投影**：新增 Passage 级“引用与依赖”区，递归读取 Branch、Switch、Loop 子树及 Choice/Include/Variable/Set 的真实字段，展示当前 Passage 引用的目标、反向引用当前 Passage 的来源、读取/写入状态、时间动作和背包条件/动作；两向 Passage 关系都可定位。原始块与无法静态分析的表达式明确归为“未知”，不伪装已验证，也不持久化第二份依赖摘要。
-- **领域系统闭环**：时间依赖逐项显示 `day`、`period`、StoryInit、StoryCaption 和时间引擎；背包依赖逐项显示 `backpack`、StoryInit、背包 Passage 和 StoryMenu。完整系统可定位，缺失或部分安装可在当前依赖行创建/修复；故事级系统卡同时显示从所有 Passage 派生的真实使用次数。
+- **领域系统闭环**：时间依赖逐项显示 `day`、`period`、StoryInit、StoryCaption 和时间引擎；背包依赖逐项显示 `backpack`、StoryInit、背包 Passage 和 StoryMenu。完整系统可定位，缺失或部分安装可在当前依赖行创建/修复；故事级系统状态现统一显示在“系统与全局内容”中心，Passage 编辑区不再常驻全局卡片。
 - **语义运行差异**：真实 SugarCube 运行检查仍保留通用状态 before/after；状态页额外把 `day + period` 组合成人类可读的时间变化，并把重复字符串背包折算成逐物品数量变化，例如“木材：2 → 1”，不改变现有字符串多重集模型。
 - **正确性修复**：结构化 `count` 表达式会记录其 `variableId`，因此背包数量条件现在能进入状态引用、依赖统计和未知性判断；跨日回归直接执行生成的时间引擎，验证第 1 天夜晚推进两个时段得到第 2 天上午。
 - **验证边界**：新增 10D 回归覆盖递归综合依赖、依赖行创建/修复、重复物品数量差异和运行抽屉领域差异；并复用既有编译、真实运行、metadata round-trip、地图 getter、发布/导入测试证明本片未改变持久化与输出语义。真实 Web 检查依赖区在当前右栏和窄栏下的层级、对齐、完整性徽标与按钮可见性。七类状态中既有 10A–10C 截图证据继续有效，10D 新增“引用依赖”和“运行前后差异”证据；原生鼠标拖放的桌面人工验收仍沿用 10C 已记录的剩余项，不把 DOM 自动化冒充真实指针验收。
 - **10D 使用反馈修正（2026-08-22）**：依赖区改为默认折叠的整行按钮，折叠态保留总数及片段/状态/系统/未知统计，展开态继续显示原有定位与修复详情，纯视图状态不写入故事。添加模块面板由未定义的 `--background` 改用主题内不透明 `--white`，卡片按内容、选择、控制流、状态、导航和高级语义着色并复用 `blockKindMeta` 的 Tabler SVG；面板加大阴影、宽度与内部滚动，后方文字不再透出。“常用”删除重复的条件分支，它只在“控制流”出现。真实 Web 在 491px 右栏确认依赖折叠/展开无溢出；模块面板背景为 `rgb(248,248,248)`、opacity 1，11 个入口均有 SVG，条件分支仅 1 个。
+
+### 故事级系统与全局内容中心（阶段 10 后的信息架构收口，已实现）
+
+- **统一归属**：故事变量、时间/背包能力和 SugarCube 特殊 Passage 都是故事级资源，不属于当前选中的普通 Passage。三者统一进入“故事 → 系统与全局内容”；顶部固定区仅保留缩放和撤销/恢复，Passage 工具栏只保留 Passage 操作。
+- **系统不是按钮**：时间与背包的本质是“能力包 + 结构化状态 + 生成物 + 完整性检查”。中心使用带状态的系统卡显示粗略规模、可用/缺失/不完整状态，并提供启用、修复和定位；动作编辑器与依赖视图仍保留就地的上下文修复入口。
+- **特殊 Passage 按需创建**：Twine 2 的 Passage 名称唯一，因此同名特殊 Passage 也只能有一份；新故事不批量生成空壳。中心展示未创建/已创建状态，按需创建后可定位。`StoryInit` 仍会在首次建立故事状态或安装领域系统时自动出现，因为此时已有真实初始化内容。
+- **SugarCube 精确名称**：当前注册表为 `StoryDisplayTitle`、`StoryAuthor`、`StorySubtitle`、`StoryBanner`、`StoryInit`、`StoryCaption`、`StoryMenu`、`PassageHeader`、`PassageFooter`、`PassageReady`、`PassageDone`、`StoryInterface`。`StoryTitle` 是 Twine 1 时代名称，在 Twine 2 SugarCube 中不作为特殊 Passage；项目名称继续由“重命名”管理。
+- **高级界面安全默认值**：`StoryInterface` 必须是原始 HTML，不进入可视化块编译；按需创建时写入最小的 `<div id="passages" aria-live="polite"></div>`，满足 SugarCube 的 Passage 挂载要求，并明确提示它会替换默认界面。
+- **验收**：`npm run lint`、`npx tsc --noEmit`、中英文 locale JSON 解析和 Vite/PWA 生产构建通过（1158 模块、78 个预缓存项）；7 套定向测试 115 项通过，覆盖统一入口、旧入口移除、特殊名称、按需创建、`StoryInterface` 原始 HTML、系统修复和无障碍。真实 Web 确认顶部无系统按钮、故事页入口可发现、系统卡无横向挤压、未创建状态清楚，创建 `StoryDisplayTitle` 与启用时间系统后均只生成一份目标 Passage。全量 Jest 仍会命中本文件阶段 10B 已记录的 `leaves loop item variable blocks untouched` 既有失败，随后 `story-file.test.ts` 的异步 mock 还会因未 mock `mock-story-directory\\test-story-1.html` 终止进程；两处均不在本次故事级信息架构路径，未借机扩大修改。
 
 ### 回去主流程模块（阶段 10 之外的新功能，已完成）
 
@@ -399,7 +408,7 @@
 
 完成情况（提交见 `git log`）：
 
-- **一键创建背包系统**（工具栏新按钮「背包系统」，背包图标，位于「时间系统」旁）：单个 `updateStory` 动作（可整体撤销）——补齐 `backpack` list 状态（默认 `[]`，按名判重）；缺 StoryInit 时创建并让初始化块归位（`<<if ndef $backpack>><<set $backpack = []>><</if>>`）；创建「背包」段落（文本块 + 循环块遍历 backpack + 变量 loopItem 块，每项一行，重复项显示多行）；生成/追加 StoryMenu 入口「背包」（StoryMenu 已存在且含可视化时追加文本块并重编译，源码模式直接拼文本，链接判重不重复加）。已存在时重复点击改为高亮「背包」段落。
+- **一键创建背包系统**（当前入口：“故事 → 系统与全局内容”；早期曾为顶部独立按钮，现已移除）：单个 `updateStory` 动作（可整体撤销）——补齐 `backpack` list 状态（默认 `[]`，按名判重）；缺 StoryInit 时创建并让初始化块归位（`<<if ndef $backpack>><<set $backpack = []>><</if>>`）；创建「背包」段落（文本块 + 循环块遍历 backpack + 变量 loopItem 块，每项一行，重复项显示多行）；生成/追加 StoryMenu 入口「背包」（StoryMenu 已存在且含可视化时追加文本块并重编译，源码模式直接拼文本，链接判重不重复加）。已存在时重复操作改为高亮「背包」段落。
 - **物品动作 UI 模板**（选择块动作区）：物品动作下拉（获得物品 / 消耗物品）+ 物品名输入 + 「添加」按钮 → 生成现有 `push` / `remove` 动作（指向 backpack 状态）；无 backpack 状态时显示提示且按钮禁用；`actionSentenceText` 对名为 backpack 的状态的 push/remove 渲染为「点击后：背包获得『药草』」/「消耗」。
 - **count 表达式节点**：`VisualExpression` 新增 `{kind:'count', variableId, value}` → 编译 `($backpack).count("药草")`；仅经条件编辑器暴露「数量 ≥ N」一行（list 状态专用，编译 `($backpack).count(...) >= N`）；模拟器 `evaluateExpression` 支持 count（按模拟列表值数出现次数）；`stripStateReferences`/`isExpressionCompatible` 按 list 状态兼容处理、状态删除时剥掉 count 条件；metadata 原样 round-trip。
 - **条件编辑器 AND 链**：builder 模式支持多条件行（存为结构化 `&&` 嵌套，不再踢到表达式模式）；「且添加条件」加行、每行可删；行类型 = 普通比较 或 count 数量行（切换到「数量 ≥」时行形态变为 物品名 + 阈值输入，阈值 >=1）；句子渲染「当【backpack】中『药草』数量 ≥ 2时」，AND 链用「且」连接各句。
@@ -416,7 +425,7 @@
 完成情况（提交见 `git log`）：
 
 - **新动作类型 `advanceTime`**（`VisualStateAction.operation`）：`value` 存步数；编译为链接 setter 内的函数调用 `setup.time.advance(n)`（SugarCube setter 支持表达式调用，无需 `<<run>>`）；不引用任何状态，`stripStateReferences` / `isActionCompatible` 均跳过；back/return 清动作的既有逻辑同样清掉它。
-- **一键创建时间系统**（工具栏新按钮「时间系统」，时钟图标，位于「故事变量」旁）：单个 `updateStory` 动作（可整体撤销）完成——补齐 `day`（数字，默认 1）/ `period`（数字，默认 0）两个故事状态（按名称判重）；缺 StoryInit 时创建并让初始化块归位（复用 `compileStateInitialization` + 全量重编译）；把时间引擎（`setup.time`，含 marker 注释 `/* twine-time-system */`，重复创建不重复注入）写入 `story.script`；缺 StoryCaption 时创建可视化段落显示「第 <<=$day>> 天 · <<=setup.time.current()>>」。已存在时重复点击改为高亮 StoryCaption。
+- **一键创建时间系统**（当前入口：“故事 → 系统与全局内容”；早期曾为顶部独立按钮，现已移除）：单个 `updateStory` 动作（可整体撤销）完成——补齐 `day`（数字，默认 1）/ `period`（数字，默认 0）两个故事状态（按名称判重）；缺 StoryInit 时创建并让初始化块归位（复用 `compileStateInitialization` + 全量重编译）；把时间引擎（`setup.time`，含 marker 注释 `/* twine-time-system */`，重复创建不重复注入）写入 `story.script`；缺 StoryCaption 时创建可视化段落显示「第 <<=$day>> 天 · <<=setup.time.current()>>」。已存在时重复操作改为高亮 StoryCaption。
 - **编辑器 UI**：动作操作下拉新增「推进时间」（无条件显示）；选中后隐藏状态选择与通用值输入，改为步数输入框（>=1，0/非数字兜底为 1）；无任何故事状态时「添加操作」不再禁用，默认添加 `advanceTime` 动作；人话句「点击后：时间推进 N 个时段」。
 - **引擎**（写入故事脚本，作者可改）：`setup.time.advance(n)` 推进 n 段，深夜后回清晨、天数 +1；`setup.time.current()` 返回当前时段中文名。引擎硬编码读写 `$day`/`$period`（与一键创建的状态同名，作者改名/删除状态则时间失效，属已知不做防御）。
 - **验收**：`npm run lint`、`npx tsc --noEmit` 通过；相关 jest 全绿（visual-passage 40、visual-editor-metadata 10、create-time-system 9 新增、passage-visual-editor 51、story-states-manager 13/14——剩余 1 个失败为既有 `leaves loop item variable blocks untouched`，原始 HEAD 上同样失败，非本次引入）；Web 实测（Playwright）：一键创建 → 状态面板出现 day/period → 选择块加推进时间动作 → 生成 `[[继续探索->未命名片段][setup.time.advance(1)]]` → 发布 HTML 含引擎/初始化/顶栏 → 真实 SugarCube 试玩 6 次点击依次 清晨→…→深夜→第 2 天·清晨→上午。
@@ -496,10 +505,9 @@
 | `src/store/stories/action-creators/create-untitled-passage.ts` | 新建段落默认进入图形模式 |
 | `src/dialogs/passage-edit/passage-visual-editor.tsx` | 图形编辑器主组件（节点树 blocks + 人话条件/动作 + 模拟器 + 切源码） |
 | `src/dialogs/story-states/story-states-manager.tsx` | 故事状态管理（全局状态增删改 + 级联清理重编译） |
-| `src/dialogs/story-states/story-states-dialog.tsx` | 故事状态对话框（故事级，工具栏按钮打开） |
-| `src/routes/story-edit/toolbar/story-states-button.tsx` | 工具栏「故事状态」入口按钮 |
-| `src/routes/story-edit/toolbar/create-time-system-button.tsx` | 工具栏「时间系统」一键创建按钮 |
-| `src/routes/story-edit/toolbar/create-backpack-system-button.tsx` | 工具栏「背包系统」一键创建按钮 |
+| `src/dialogs/story-states/story-states-dialog.tsx` | 故事状态对话框（由统一故事中心打开） |
+| `src/dialogs/story-structure/story-structure-dialog.tsx` | “系统与全局内容”故事级中心（变量、领域系统、特殊 Passage） |
+| `src/routes/story-edit/toolbar/story/story-structure-button.tsx` | “故事”页签中的统一中心入口 |
 | `src/store/stories/action-creators/create-time-system.ts` | 时间系统一键创建（day/period 状态 + StoryInit + story.script 引擎 + StoryCaption，单动作可撤销） |
 | `src/store/stories/action-creators/create-backpack-system.ts` | 背包系统一键创建（backpack 状态 + StoryInit + 背包段落 + StoryMenu 入口，单动作可撤销） |
 | `src/dialogs/passage-edit/passage-edit-contents.tsx` | 图形/源码编辑器分流 |

@@ -7,6 +7,7 @@ import {FindReplaceButton} from './find-replace-button';
 import {JavaScriptButton} from './javascript-button';
 import {PassageTagsButton} from './passage-tags-button';
 import {StylesheetButton} from './stylesheet-button';
+import {StoryStructureButton} from './story-structure-button';
 
 export interface StoryActionsProps {
 	story: Story;
@@ -18,6 +19,7 @@ export const StoryActions: React.FC<StoryActionsProps> = props => {
 
 	return (
 		<ButtonBar>
+			<StoryStructureButton story={story} />
 			<FindReplaceButton story={story} />
 			<RenameStoryButton
 				existingStories={stories}

@@ -537,6 +537,30 @@
 		"storyStates": {
 			"title": "Story Variables"
 		},
+		"storyStructure": {
+			"title": "Story Systems and Global Content",
+			"intro": "Manage variables, system capabilities, interface slots, and SugarCube runtime hooks shared by the whole story. Ordinary Passages only show dependencies they actually use.",
+			"systemsAndCapabilities": "Systems and capabilities",
+			"systemsHint": "Systems provide state, conditions, actions, and runtime artifacts; they do not belong to an individual Passage.",
+			"storyVariables": "Story variables",
+			"variableCount": "{{count}} variables",
+			"timeSystemSummary": "2 variables · 2 global passages · 1 engine",
+			"backpackSystemSummary": "1 variable · 3 global passages",
+			"manage": "Manage",
+			"enable": "Enable",
+			"repair": "Repair",
+			"locate": "Locate",
+			"created": "Created",
+			"notCreated": "Not created",
+			"createAndEdit": "Create",
+			"storyInformation": "Story information",
+			"storyInformationHint": "Create SugarCube title and author surfaces only when needed; the project name remains managed by Rename Story.",
+			"globalInterface": "Global interface",
+			"globalInterfaceHint": "These surfaces appear in the sidebar, menu, or before and after every ordinary Passage.",
+			"runtimeAdvanced": "Runtime and advanced",
+			"runtimeAdvancedHint": "Create initialization and lifecycle hooks only when global behavior actually needs them.",
+			"storyInterfaceWarning": "Advanced: this Passage replaces SugarCube's default story interface."
+		},
 		"storyStylesheet": {
 			"editorLabel": "Story Stylesheet",
 			"title": "Story Stylesheet",
@@ -601,7 +625,7 @@
 				"findAndReplace": "Find and Replace",
 				"goTo": "Go To",
 				"javaScript": "JavaScript",
-				"newSpecialPassage": "New special passage: {{label}}",
+				"storyStructure": "Systems and Global Content",
 				"passageTags": "Passage Tags",
 				"snapToGrid": "Snap to Grid",
 				"startStoryHere": "Start Story Here",
@@ -616,15 +640,6 @@
 				"proofStory": "View Proofing Copy",
 				"publishToFile": "Publish to File",
 				"selectAllPassages": "Select All Passages"
-			},
-"storyStatesButton": {
-				"label": "Story states"
-			},
-			"backpackSystemButton": {
-				"label": "Backpack system"
-			},
-			"timeSystemButton": {
-				"label": "Time system"
 			},
 			"zoomButtons": {
 				"legend": "Zoom",
@@ -714,9 +729,9 @@
 		}
 	},
 	"specialPassages": {
-		"StoryTitle": {
-			"label": "Title",
-			"description": "Shown as the story title."
+		"StoryDisplayTitle": {
+			"label": "Display title",
+			"description": "Sets the story title shown in SugarCube's UI bar."
 		},
 		"StoryAuthor": {
 			"label": "Author",
@@ -725,6 +740,10 @@
 		"StorySubtitle": {
 			"label": "Subtitle",
 			"description": "Shown as the story subtitle."
+		},
+		"StoryBanner": {
+			"label": "Banner",
+			"description": "Shown in SugarCube's story banner area."
 		},
 		"StoryInit": {
 			"label": "Init",
@@ -746,9 +765,17 @@
 			"label": "Passage bottom",
 			"description": "Shown at the bottom of every passage."
 		},
+		"PassageReady": {
+			"label": "Before display",
+			"description": "Runs after each Passage renders but before display and produces no output."
+		},
 		"PassageDone": {
 			"label": "After passage",
 			"description": "Runs after each passage renders."
+		},
+		"StoryInterface": {
+			"label": "Custom story interface",
+			"description": "Replaces SugarCube's default story interface with raw HTML."
 		}
 	},
 	"undoChange": {

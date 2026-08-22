@@ -3240,11 +3240,18 @@ interface BlockShellProps {
 	icon: React.ComponentType;
 	insideLoop: boolean;
 	kindLabel: string;
+	insertSelector?: React.ReactNode;
+	onAddChoice?: () => void;
 	onDelete: () => void;
 	onDragEnd: React.DragEventHandler<HTMLButtonElement>;
 	onDragStart: React.DragEventHandler<HTMLButtonElement>;
+	onDragOverBlock: React.DragEventHandler<HTMLDivElement>;
+	onDropBlock: React.DragEventHandler<HTMLDivElement>;
+	onInsertAfter?: () => void;
+	onInsertBefore?: () => void;
 	onMoveDown: () => void;
 	onMoveUp: () => void;
+	dropPosition?: 'before' | 'after';
 	states: VisualStoryState[];
 	story: Story;
 	treeView: BlockTreeViewState;
@@ -3272,17 +3279,26 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		icon,
 		insideLoop,
 		kindLabel,
+		insertSelector,
+		onAddChoice,
 		onDelete,
 		onDragEnd,
 		onDragStart,
+		onDragOverBlock,
+		onDropBlock,
+		onInsertAfter,
+		onInsertBefore,
 		onMoveDown,
 		onMoveUp,
+		dropPosition,
 		states,
 		story,
 		treeView
 	} = props;
 	const {t} = useTranslation();
 	const Icon = icon;
+	const shellRef = React.useRef<HTMLDivElement>(null);
+	const [insertMenuOpen, setInsertMenuOpen] = React.useState(false);
 	const [showCode, setShowCode] = React.useState(false);
 	const container = isContainerBlock(block);
 	const collapsed = container && treeView.collapsedContainerIds.has(block.id);
@@ -3295,6 +3311,22 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		[block, insideLoop, states, story]
 	);
 
+	React.useEffect(() => {
+		if (!insertMenuOpen) {
+			return;
+		}
+
+		const closeOnOutsidePointer = (event: PointerEvent) => {
+			if (!shellRef.current?.contains(event.target as Node)) {
+				setInsertMenuOpen(false);
+			}
+		};
+
+		window.addEventListener('pointerdown', closeOnOutsidePointer);
+
+		return () => window.removeEventListener('pointerdown', closeOnOutsidePointer);
+	}, [insertMenuOpen]);
+
 	return (
 		<div
 			className={`visual-block block-kind-${block.kind}${selected ? ' is-selected' : ''}${
@@ -3303,19 +3335,35 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 				choiceGroup ? ' is-choice-group-member' : ''
 			}${choiceGroup?.start ? ' is-choice-group-start' : ''}${
 				choiceGroup?.end ? ' is-choice-group-end' : ''
-			}${dragging ? ' is-dragging' : ''}`}
+			}${dragging ? ' is-dragging' : ''}${
+				dropPosition ? ` is-drop-${dropPosition}` : ''
+			}`}
+			data-block-id={block.id}
 			data-kind={block.kind}
 			data-depth={depth}
+			onDragOver={onDragOverBlock}
+			onDrop={onDropBlock}
+			ref={shellRef}
 		>
 			{choiceGroup?.start && (
 				<div className="choice-group-heading">
 					<span>{t('dialogs.passageEdit.visual.choiceGroup')}</span>
-					<span className="choice-group-metrics">
-						{t('dialogs.passageEdit.visual.choiceGroupMetrics', {
-							actions: choiceGroup.actions,
-							conditions: choiceGroup.conditions,
-							count: choiceGroup.count
-						})}
+					<span className="choice-group-heading-actions">
+						<span className="choice-group-metrics">
+							{t('dialogs.passageEdit.visual.choiceGroupMetrics', {
+								actions: choiceGroup.actions,
+								conditions: choiceGroup.conditions,
+								count: choiceGroup.count
+							})}
+						</span>
+						<IconButton
+							disabled={disabled}
+							icon={<IconPlus />}
+							iconOnly
+							label={t('dialogs.passageEdit.visual.addChoiceOption')}
+							onClick={onAddChoice}
+							variant="create"
+						/>
 					</span>
 				</div>
 			)}
@@ -3355,6 +3403,16 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 					)}
 				</button>
 				<div className="block-toolbar">
+					{(onInsertBefore || onInsertAfter) && (
+						<IconButton
+							disabled={disabled}
+							icon={<IconPlus />}
+							iconOnly
+							label={t('dialogs.passageEdit.visual.addModule')}
+							onClick={() => setInsertMenuOpen(open => !open)}
+							variant="create"
+						/>
+					)}
 					<button
 						aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
 						aria-label={t('dialogs.passageEdit.visual.dragBlock')}
@@ -3422,6 +3480,35 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 					/>
 				</div>
 			</div>
+			{insertMenuOpen && (
+				<div className="block-insert-menu">
+					{onInsertBefore && (
+						<button
+							onClick={() => {
+								setInsertMenuOpen(false);
+								onInsertBefore();
+							}}
+							type="button"
+						>
+							{t('dialogs.passageEdit.visual.addModuleBefore')}
+						</button>
+					)}
+					{onInsertAfter && (
+						<button
+							onClick={() => {
+								setInsertMenuOpen(false);
+								onInsertAfter();
+							}}
+							type="button"
+						>
+							{t('dialogs.passageEdit.visual.addModuleAfter')}
+						</button>
+					)}
+				</div>
+			)}
+			{insertSelector && (
+				<div className="block-selector-anchor">{insertSelector}</div>
+			)}
 			{showCode && (
 				<pre className="block-code-preview">
 					{fragment === ''
@@ -3563,58 +3650,41 @@ const BlockList: React.FC<BlockListProps> = props => {
 	}
 
 	const [selectorIndex, setSelectorIndex] = React.useState<number>();
+	const [selectorAnchorBlockId, setSelectorAnchorBlockId] = React.useState<string>();
 	const [draggedBlockId, setDraggedBlockId] = React.useState<string>();
 	const [activeDropIndex, setActiveDropIndex] = React.useState<number>();
+	const [activeDropBlockId, setActiveDropBlockId] = React.useState<string>();
 
-	function renderInsertPoint(index: number, listEnd = false) {
+	function renderInsertControl(index: number, listEnd = false) {
 		const selectorOpen = selectorIndex === index;
-		const dropActive = activeDropIndex === index;
 
 		return (
 			<div
-				className={`block-insert-point${listEnd ? ' is-list-end' : ''}${
-					dropActive ? ' is-drop-active' : ''
-				}`}
+				className={`block-insert-control${listEnd ? ' is-list-end' : ''}`}
 				data-insert-index={index}
 				key={`insert-${index}`}
-				onDragEnter={event => {
-					if (draggedBlockId) {
-						event.preventDefault();
-						event.stopPropagation();
-						setActiveDropIndex(index);
-					}
-				}}
-				onDragOver={event => {
-					if (draggedBlockId) {
-						event.preventDefault();
-						event.stopPropagation();
-						event.dataTransfer.dropEffect = 'move';
-					}
-				}}
-				onDrop={event => {
-					event.preventDefault();
-					event.stopPropagation();
-					if (draggedBlockId) {
-						moveBlockTo(draggedBlockId, index);
-					}
-					setDraggedBlockId(undefined);
-					setActiveDropIndex(undefined);
-				}}
 			>
 				<IconButton
 					disabled={disabled}
 					icon={<IconPlus />}
 					iconOnly={!listEnd}
 					label={t('dialogs.passageEdit.visual.addModule')}
-					onClick={() => setSelectorIndex(selectorOpen ? undefined : index)}
+					onClick={() => {
+						setSelectorAnchorBlockId(undefined);
+						setSelectorIndex(selectorOpen ? undefined : index);
+					}}
 					variant="create"
 				/>
 				{selectorOpen && (
 					<ModuleSelector
 						disabled={disabled}
-						onClose={() => setSelectorIndex(undefined)}
+						onClose={() => {
+							setSelectorAnchorBlockId(undefined);
+							setSelectorIndex(undefined);
+						}}
 						onInsert={kind => {
 							insertModuleAt(index, kind);
+							setSelectorAnchorBlockId(undefined);
 							setSelectorIndex(undefined);
 						}}
 						states={states}
@@ -3624,8 +3694,89 @@ const BlockList: React.FC<BlockListProps> = props => {
 		);
 	}
 
+	function renderAnchoredSelector(index: number) {
+		if (selectorIndex !== index) {
+			return undefined;
+		}
+
+		return (
+			<ModuleSelector
+				disabled={disabled}
+				onClose={() => {
+					setSelectorAnchorBlockId(undefined);
+					setSelectorIndex(undefined);
+				}}
+				onInsert={kind => {
+					insertModuleAt(index, kind);
+					setSelectorAnchorBlockId(undefined);
+					setSelectorIndex(undefined);
+				}}
+				states={states}
+			/>
+		);
+	}
+
+	function autoScrollWhileDragging(target: HTMLElement, pointerY: number) {
+		let candidate = target.parentElement;
+
+		while (candidate && candidate !== document.body) {
+			const overflowY = window.getComputedStyle(candidate).overflowY;
+
+			if (
+				(overflowY === 'auto' || overflowY === 'scroll') &&
+				candidate.scrollHeight > candidate.clientHeight
+			) {
+				const bounds = candidate.getBoundingClientRect();
+				const edge = 48;
+
+				if (pointerY < bounds.top + edge) {
+					candidate.scrollTop -= 24;
+				} else if (pointerY > bounds.bottom - edge) {
+					candidate.scrollTop += 24;
+				}
+
+				return;
+			}
+
+			candidate = candidate.parentElement;
+		}
+	}
+
+	function dragOverBlock(event: React.DragEvent<HTMLDivElement>, index: number) {
+		if (!draggedBlockId) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		event.dataTransfer.dropEffect = 'move';
+		autoScrollWhileDragging(event.currentTarget, event.clientY);
+		const bounds = event.currentTarget.getBoundingClientRect();
+		const insertionIndex =
+			event.clientY < bounds.top + bounds.height / 2 ? index : index + 1;
+
+		setActiveDropIndex(insertionIndex);
+		setActiveDropBlockId(blocks[index].id);
+	}
+
+	function dropOnBlock(event: React.DragEvent<HTMLDivElement>) {
+		if (!draggedBlockId || activeDropIndex === undefined) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		moveBlockTo(draggedBlockId, activeDropIndex);
+		setDraggedBlockId(undefined);
+		setActiveDropIndex(undefined);
+		setActiveDropBlockId(undefined);
+	}
+
 	return (
-		<div className="visual-block-list" data-depth={depth}>
+		<div
+			className={`visual-block-list${draggedBlockId ? ' is-sorting' : ''}`}
+			data-depth={depth}
+		>
 			{blocks.map((block, index) => {
 				const choiceIndex = blocks
 					.slice(0, index)
@@ -3648,7 +3799,6 @@ const BlockList: React.FC<BlockListProps> = props => {
 
 				return (
 					<React.Fragment key={block.id}>
-						{renderInsertPoint(index)}
 					<BlockShell
 						block={block}
 						canMoveDown={index < blocks.length - 1}
@@ -3671,20 +3821,57 @@ const BlockList: React.FC<BlockListProps> = props => {
 						depth={depth}
 						disabled={disabled}
 						dragging={draggedBlockId === block.id}
+						dropPosition={
+							activeDropBlockId === block.id && activeDropIndex === index
+								? 'before'
+								: activeDropBlockId === block.id &&
+										activeDropIndex === index + 1
+									? 'after'
+									: undefined
+						}
 						hidden={hidden}
 						icon={meta.icon}
 						insideLoop={insideLoop}
+						insertSelector={
+							selectorAnchorBlockId === block.id
+								? renderAnchoredSelector(selectorIndex ?? index)
+								: undefined
+						}
 						kindLabel={t(meta.labelKey)}
+						onAddChoice={
+							choiceGroupStart
+								? () => insertModuleAt(index + choiceRun.length, 'choice')
+								: undefined
+						}
 						onDelete={() => deleteBlock(index)}
 						onDragEnd={() => {
 							setDraggedBlockId(undefined);
 							setActiveDropIndex(undefined);
+							setActiveDropBlockId(undefined);
 						}}
 						onDragStart={event => {
 							event.dataTransfer.effectAllowed = 'move';
 							event.dataTransfer.setData('text/plain', block.id);
 							setDraggedBlockId(block.id);
 						}}
+						onDragOverBlock={event => dragOverBlock(event, index)}
+						onDropBlock={dropOnBlock}
+						onInsertAfter={
+							block.kind !== 'choice' || choiceGroupEnd
+								? () => {
+									setSelectorAnchorBlockId(block.id);
+									setSelectorIndex(index + 1);
+								}
+								: undefined
+						}
+						onInsertBefore={
+							block.kind !== 'choice' || choiceGroupStart
+								? () => {
+									setSelectorAnchorBlockId(block.id);
+									setSelectorIndex(index);
+								}
+								: undefined
+						}
 						onMoveDown={() => moveBlock(index, 1)}
 						onMoveUp={() => moveBlock(index, -1)}
 						states={states}
@@ -3834,7 +4021,7 @@ const BlockList: React.FC<BlockListProps> = props => {
 					</React.Fragment>
 				);
 			})}
-			{renderInsertPoint(blocks.length, true)}
+			{renderInsertControl(blocks.length, true)}
 		</div>
 	);
 };

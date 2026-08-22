@@ -267,6 +267,37 @@
 	opacity: 1;
 }
 
+.block-insert-menu {
+	background: color-mix(in srgb, var(--background) 96%, var(--accent));
+	border-top: 1px solid var(--light-gray);
+	display: flex;
+	gap: calc(var(--grid-size) / 2);
+	justify-content: flex-end;
+	padding: calc(var(--grid-size) / 2) var(--grid-size);
+}
+
+.block-insert-menu button {
+	background: transparent;
+	border: 1px solid var(--light-gray);
+	border-radius: var(--corner-round);
+	color: var(--foreground);
+	cursor: pointer;
+	font: inherit;
+	padding: calc(var(--grid-size) / 2) var(--grid-size);
+}
+
+.block-insert-menu button:hover,
+.block-insert-menu button:focus-visible {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.block-selector-anchor {
+	height: 0;
+	position: relative;
+	z-index: 100;
+}
+
 .visual-block-list {
 	display: flex;
 	flex-direction: column;
@@ -363,6 +394,12 @@
 	font-weight: normal;
 }
 
+.choice-group-heading-actions {
+	align-items: center;
+	display: flex;
+	gap: calc(var(--grid-size) / 2);
+}
+
 .visual-block.is-choice-group-member {
 	border-radius: 0;
 	margin-bottom: calc(var(--grid-size) * -0.75);
@@ -375,6 +412,33 @@
 .visual-block.is-choice-group-end {
 	border-radius: 0 0 var(--corner-round) var(--corner-round);
 	margin-bottom: 0;
+}
+
+.visual-block.is-drop-before::after,
+.visual-block.is-drop-after::after {
+	background: var(--accent);
+	border-radius: 999px;
+	box-shadow: 0 0 0 2px color-mix(in srgb, transparent 72%, var(--accent));
+	content: '';
+	height: 3px;
+	left: 0;
+	pointer-events: none;
+	position: absolute;
+	right: 0;
+	z-index: 5;
+}
+
+.visual-block.is-drop-before::after {
+	top: -2px;
+}
+
+.visual-block.is-drop-after::after {
+	bottom: -2px;
+}
+
+.visual-block-list.is-sorting > .visual-block > .visual-block-body,
+.visual-block-list.is-sorting > .visual-block > .block-code-preview {
+	display: none;
 }
 
 .block-condition-summary,
@@ -651,64 +715,24 @@
 	white-space: pre-wrap;
 }
 
-/* ---- Phase 10C: exact insertion points + module selector ---- */
+/* ---- Phase 10C repair: stable insertion controls + forgiving drop targets ---- */
 
-.block-insert-point {
-	height: 0;
-	margin: calc(var(--grid-size) * -0.375) 0;
+.block-insert-control {
+	align-items: center;
+	display: flex;
+	justify-content: center;
 	position: relative;
 	width: 100%;
 }
 
-.block-insert-point::before {
-	border-top: 2px solid transparent;
-	content: '';
-	height: calc(var(--grid-size) * 0.75);
-	left: 0;
-	position: absolute;
-	right: 0;
-	top: calc(var(--grid-size) * -0.375);
+.block-insert-control.is-list-end {
+	justify-content: flex-start;
+	padding: calc(var(--grid-size) / 2);
 }
 
-.block-insert-point > .icon-button {
-	opacity: 0;
-	position: absolute;
-	top: 50%;
-	transform: translateY(-50%);
-	z-index: 3;
-}
-
-.block-insert-point:hover::before,
-.block-insert-point:focus-within::before,
-.block-insert-point.is-drop-active::before {
-	border-top-color: var(--accent);
-}
-
-.block-insert-point:hover > .icon-button,
-.block-insert-point:focus-within > .icon-button,
-.block-insert-point.is-drop-active > .icon-button {
-	opacity: 1;
-}
-
-.block-insert-point.is-drop-active::before {
-	border-top-width: 3px;
-}
-
-.block-insert-point.is-list-end {
-	display: inline-block;
-	height: auto;
-	margin: 0 0 0 calc(var(--grid-size) / 2);
-	width: auto;
-}
-
-.block-insert-point.is-list-end::before {
-	display: none;
-}
-
-.block-insert-point.is-list-end > .icon-button {
-	opacity: 1;
-	position: static;
-	transform: none;
+.block-insert-control.is-list-end > .icon-button {
+	background: transparent;
+	padding: calc(var(--grid-size) / 2);
 }
 
 .module-selector {
@@ -724,8 +748,9 @@
 	position: absolute;
 	top: calc(100% + var(--grid-size));
 	z-index: 100;
-	width: min(20rem, calc(100vw - var(--grid-size) - var(--grid-size)));
-	left: 0;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(20rem, 100%);
 }
 
 .module-selector input {

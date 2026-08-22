@@ -1,4 +1,11 @@
-import {act, fireEvent, render, screen, within} from '@testing-library/react';
+import {
+	act,
+	createEvent,
+	fireEvent,
+	render,
+	screen,
+	within
+} from '@testing-library/react';
 import type {TFunction} from 'i18next';
 import * as React from 'react';
 import {
@@ -1040,17 +1047,22 @@ describe('phase 10C precise insertion and ordering', () => {
 				version: 2
 			};
 		});
-		const insertionPoint = container.querySelector(
-			'.visual-block-list[data-depth="0"] > [data-insert-index="1"]'
+		const beforeBlock = container.querySelector(
+			'.visual-block-list[data-depth="0"] > .visual-block[data-block-id="before"]'
 		) as HTMLElement;
 
 		fireEvent.click(
-			within(insertionPoint).getByRole('button', {
+			within(beforeBlock).getByRole('button', {
 				name: 'dialogs.passageEdit.visual.addModule'
 			})
 		);
 		fireEvent.click(
-			within(insertionPoint).getAllByText(
+			within(beforeBlock).getByRole('button', {
+				name: 'dialogs.passageEdit.visual.addModuleAfter'
+			})
+		);
+		fireEvent.click(
+			within(beforeBlock).getAllByText(
 				'dialogs.passageEdit.visual.blockKindRaw'
 			)[0]
 		);
@@ -1083,7 +1095,7 @@ describe('phase 10C precise insertion and ordering', () => {
 		).toEqual(['raw', 'text']);
 	});
 
-	it('drops a dragged block at another boundary in the same list', () => {
+	it('drops a dragged block on the upper half of another module', () => {
 		const {container} = renderComponent(story => {
 			story.passages[0].visual = {
 				blocks: [
@@ -1096,9 +1108,6 @@ describe('phase 10C precise insertion and ordering', () => {
 		const handles = screen.getAllByLabelText(
 			'dialogs.passageEdit.visual.dragBlock'
 		);
-		const firstBoundary = container.querySelector(
-			'.visual-block-list[data-depth="0"] > [data-insert-index="0"]'
-		) as HTMLElement;
 		const dataTransfer = {
 			dropEffect: 'none',
 			effectAllowed: 'none',
@@ -1106,15 +1115,74 @@ describe('phase 10C precise insertion and ordering', () => {
 		};
 
 		fireEvent.dragStart(handles[1], {dataTransfer});
-		fireEvent.dragEnter(firstBoundary, {dataTransfer});
-		fireEvent.dragOver(firstBoundary, {dataTransfer});
-		fireEvent.drop(firstBoundary, {dataTransfer});
+		expect(
+			container.querySelector('.visual-block-list[data-depth="0"]')
+		).toHaveClass('is-sorting');
+		const dropTarget = container.querySelector(
+			'.visual-block-list[data-depth="0"] > .visual-block[data-block-id="first"]'
+		) as HTMLElement;
+		jest.spyOn(dropTarget, 'getBoundingClientRect').mockReturnValue({
+			bottom: 40,
+			height: 40,
+			left: 0,
+			right: 400,
+			top: 0,
+			width: 400,
+			x: 0,
+			y: 0,
+			toJSON: () => ({})
+		});
+		const dragOverEvent = createEvent.dragOver(dropTarget, {dataTransfer});
+		Object.defineProperty(dragOverEvent, 'clientY', {value: 5});
+		fireEvent(dropTarget, dragOverEvent);
+		expect(dropTarget).toHaveClass('is-drop-before');
+		fireEvent.drop(dropTarget, {clientY: 5, dataTransfer});
 
 		expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'second');
 		expect(
 			[...container.querySelectorAll('.visual-block-list[data-depth="0"] > .visual-block')]
 				.map(element => element.getAttribute('data-kind'))
 		).toEqual(['raw', 'text']);
+	});
+
+	it('uses a semantic add-option action instead of generic gaps inside choices', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{
+						actions: [],
+						id: 'choice-one',
+						kind: 'choice',
+						label: 'One',
+						targetPassageId: story.passages[1].id
+					},
+					{
+						actions: [],
+						id: 'choice-two',
+						kind: 'choice',
+						label: 'Two',
+						targetPassageId: story.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+		const rootList = container.querySelector(
+			'.visual-block-list[data-depth="0"]'
+		) as HTMLElement;
+
+		expect(rootList.querySelectorAll('[data-insert-index]')).toHaveLength(1);
+		expect(
+			rootList.querySelector('[data-insert-index="1"]')
+		).not.toBeInTheDocument();
+
+		fireEvent.click(
+			within(rootList).getByRole('button', {
+				name: 'dialogs.passageEdit.visual.addChoiceOption'
+			})
+		);
+
+		expect(rootList.querySelectorAll('.visual-block[data-kind="choice"]')).toHaveLength(3);
 	});
 
 	it('reorders condition rows without changing their contents', () => {

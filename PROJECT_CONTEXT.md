@@ -7,7 +7,7 @@
 > - 更新后随改动一起提交；无法归入同一提交时，单独用 `docs:` 提交。
 > - 每次会话结束前，必须检查 `git status` 与本文档是否一致。
 >
-> 最后更新：「回去主流程」模块已完成（见下文「回去主流程模块（阶段 10 之外的新功能）」），提交 hash 以 `git log` 为准。此前：背包与合成系统纵向切片已完成（见下文「背包与合成系统」）；时间系统纵向切片已完成（见下文「时间系统」）。阶段 10A 已在提交 `c72cde1d` 完成第一片纵向实现，并由提交 `d48a6fad` 修正普通模块展开合同；随后一轮既有模块正确性修复：条件分支恢复条件入口且不再把未完成分支编译成永真，多路分支改为 SugarCube 正确子标签语法，循环项限定在循环作用域，修改变量限制数字增减，选择的返回目标不再保留不可执行动作，模块选择器补齐中文分组并适配窄面板。阶段 10B（分支视觉语法与选择分组）、10C（插入位置与拖拽/键盘移动）、10D（引用视图及完整验收）仍待实现。详细设计契约见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md`。读取时请以 `git log` 显示的实际 HEAD 为准。
+> 最后更新：2026-08-22 已结合当前时间/背包代码、测试和 `参考/` 三张界面图更新认知与阶段 10B–10D 计划；只更新设计与项目上下文，未修改业务代码。结论：两个系统的最小运行闭环成立，但目前是一键脚手架 + 通用动作入口，缺少持续可见的系统状态、完整性检测、依赖/修复入口和语义动作投影；按单个状态名判断“已安装”还会漏掉部分安装。阶段 10B 将补树形/Choice 语法与系统/动作投影，10C 补精确插入、移动和能力约束，10D 补依赖视图与时间/背包综合验收；不照搬参考图常驻模块栏，不新增 `choiceGroup`、配方表或物品目录。详细合同见 `NARRATIVE_EDITOR_INTERACTION_DESIGN.md` §12.5、§19。读取时请以 `git log` 显示的实际 HEAD 为准。
 
 ---
 
@@ -345,9 +345,9 @@
 
 阶段 10 后续切片：
 
-1. **10B**：强化 If/Switch 的分叉视觉语法与“满足/否则”标识；相邻 Choice 只做视觉分组，不增加 `choiceGroup` schema。
-2. **10C**：把末尾追加改为任意合法位置 `insertAt(index)`；统一拖拽手柄并保留上移/下移与键盘移动，首版限制在同一 `BlockList` 内。
-3. **10D**：补齐引用视图、固定复杂验收段落和阶段 10 全部 7 类截图；复核真实 SugarCube、metadata round-trip 与地图连线不变。
+1. **10B：结构语法 + 系统/动作投影**：强化 If/Switch 的分叉视觉语法与“满足/否则/case/default”；相邻 Choice 只做视觉分组，展开态明确“显示条件 / 选择后执行”。把普通状态动作、推进时间、获得/消耗物品投影成有顺序的语义动作行；增加时间/背包系统概览、生成物定位与完整性状态。保持现有 schema，不增加 `choiceGroup`、时间/背包块、配方表或物品目录。
+2. **10C：精确插入 + 一致移动 + 能力约束**：把末尾追加改为任意合法位置 `insertAt(index)`；统一拖拽手柄并保留上移/下移与键盘移动，首版限制在同一 `BlockList` 内；Choice 条件/动作也要能明确排序。系统动作仅在对应系统完整时可用，缺失/部分安装时提供创建或修复入口。
+3. **10D：依赖视图 + 综合验收**：引用视图补时间引擎/day/period/StoryInit/Caption 与 backpack/背包 Passage/StoryMenu 的依赖；固定复杂 Passage 同时覆盖分支、Choice 分组、合成和跨日推进；验证部分安装检测/修复、真实 SugarCube、发布/导入、metadata round-trip、地图连线与 7 类固定截图。
 
 ### 回去主流程模块（阶段 10 之外的新功能，已完成）
 
@@ -379,6 +379,8 @@
 - **合成用法**（作者侧，零新块）：选择块条件 = 多行 AND（如 药草数量≥2 且 树枝数量≥1），动作 = 消耗物品 ×N + 获得物品 ×1；材料不足时选项不渲染（SugarCube 条件天然隐藏）。
 - **验收**：`npm run lint`、`npx tsc --noEmit` 通过；相关 jest 全绿（visual-passage 42、visual-editor-metadata 11、create-backpack-system 8 新增、create-time-system 9、passage-visual-editor 57、story-states-manager 14/15——剩余 1 个失败为既有 `leaves loop item variable blocks untouched`，原始 HEAD 同样失败，非本次引入）；Web 实测（Playwright）：一键创建背包 → 三个选择块（采集药草/采集树枝/合成木弓）→ 物品模板加获得动作 → 条件编辑器配 2 行 AND count 条件 → 消耗×2药草+×1树枝、获得木弓 → 生成源码 `<<if ((($backpack).count("药草") >= 2) && (($backpack).count("树枝") >= 1))>>[[合成木弓->未命名片段][$backpack.delete("药草"); $backpack.delete("药草"); $backpack.delete("树枝"); $backpack.push("木弓")]]<</if>>` → 发布试玩：初始合成选项隐藏 → 采 2 药草 1 树枝后出现 → 点击合成 → 菜单「背包」显示「木弓」且材料清空（`backpack` 状态 = `["木弓"]`）。
 - **保持不变**：`VisualPassageContentV2` schema 版本、发布/导入 metadata 结构（count 表达式与 AND 链随表达式原样往返）。
+- **2026-08-22 复核**：当前字符串多重集模型适合“物品只有名字、重复项即数量”的既定范围，暂不应升级成物品领域模型；但背包页逐项重复显示、获得/消耗仅嵌在 Choice 编辑器、合成条件/动作分散，作者表现不够清晰。10B–10D 应用语义动作行、派生配方摘要、数量 before/after、系统卡和依赖/修复入口改善；只有图标、描述、分类、堆叠上限或安全改名成为明确需求时，才另排结构化物品目录。
+- **已确认完整性缺口**：`storyHasBackpackSystem()` 目前只检查名为 `backpack` 的状态；若该状态已存在但背包 Passage 或 StoryMenu 入口缺失，工具栏会判作已安装、仅尝试高亮且不能补齐。此项纳入 10B 的系统状态判断和 10D 的部分安装/修复验收。
 
 ### 时间系统（阶段 10 之外的新功能，已完成）
 
@@ -392,6 +394,8 @@
 - **引擎**（写入故事脚本，作者可改）：`setup.time.advance(n)` 推进 n 段，深夜后回清晨、天数 +1；`setup.time.current()` 返回当前时段中文名。引擎硬编码读写 `$day`/`$period`（与一键创建的状态同名，作者改名/删除状态则时间失效，属已知不做防御）。
 - **验收**：`npm run lint`、`npx tsc --noEmit` 通过；相关 jest 全绿（visual-passage 40、visual-editor-metadata 10、create-time-system 9 新增、passage-visual-editor 51、story-states-manager 13/14——剩余 1 个失败为既有 `leaves loop item variable blocks untouched`，原始 HEAD 上同样失败，非本次引入）；Web 实测（Playwright）：一键创建 → 状态面板出现 day/period → 选择块加推进时间动作 → 生成 `[[继续探索->未命名片段][setup.time.advance(1)]]` → 发布 HTML 含引擎/初始化/顶栏 → 真实 SugarCube 试玩 6 次点击依次 清晨→…→深夜→第 2 天·清晨→上午。
 - **保持不变**：`VisualPassageContentV2` schema 版本、发布/导入 metadata 结构（advanceTime 随 spread 原样往返）。
+- **2026-08-22 复核**：六时段、跨日进位和“仅由作者选择是否推进”的运行语义合理；世界时间推进不是参考图中的异步等待模块。表现层更正确的形式是 Choice“选择后执行”里的独立语义动作行“推进时间 N 个时段”，并有故事级时间系统卡显示配置、生成物、状态和依赖；不把时间做成 Passage 内普通块。
+- **已确认完整性缺口**：`storyHasTimeSystem()` 只检查 `day` 与 `period` 状态，动作下拉又无条件提供 `advanceTime`。状态存在但脚本引擎/StoryCaption 缺失时会被误判已安装；未安装时仍可编译出 `setup.time.advance(n)`。此项纳入 10B 的完整性/能力状态、10C 的动作禁用与修复入口、10D 的真实运行验收。
 
 ### 阶段 10 之后：新模块候选池（方向记录，未排期、未实现）
 

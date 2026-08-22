@@ -13,6 +13,7 @@ import {
 	IconCode,
 	IconFileImport,
 	IconGitBranch,
+	IconGripVertical,
 	IconAlertTriangle,
 	IconPlus,
 	IconPointer,
@@ -1413,6 +1414,19 @@ function BuilderCondition(props: {
 		onChange(nextRows.length === 0 ? undefined : rowsToCondition(nextRows));
 	}
 
+	function moveRow(index: number, delta: number) {
+		const target = index + delta;
+
+		if (target < 0 || target >= rows.length) {
+			return;
+		}
+
+		const nextRows = [...rows];
+
+		[nextRows[index], nextRows[target]] = [nextRows[target], nextRows[index]];
+		onChange(rowsToCondition(nextRows));
+	}
+
 	return (
 		<>
 			{rows.map((row, index) => (
@@ -1427,13 +1441,29 @@ function BuilderCondition(props: {
 						onUpdate={next => updateRow(index, next)}
 						states={states}
 					/>
-					<button
-						aria-label={t(
-							'dialogs.passageEdit.visual.removeCondition'
-						)}
-						onClick={() => deleteRow(index)}
-						type="button"
-					>×</button>
+					<div className="condition-row-toolbar">
+						<IconButton
+							disabled={index === 0}
+							icon={<IconArrowUp />}
+							iconOnly
+							label={t('dialogs.passageEdit.visual.moveUp')}
+							onClick={() => moveRow(index, -1)}
+						/>
+						<IconButton
+							disabled={index === rows.length - 1}
+							icon={<IconArrowDown />}
+							iconOnly
+							label={t('dialogs.passageEdit.visual.moveDown')}
+							onClick={() => moveRow(index, 1)}
+						/>
+						<IconButton
+							icon={<IconTrash />}
+							iconOnly
+							label={t('dialogs.passageEdit.visual.removeCondition')}
+							onClick={() => deleteRow(index)}
+							variant="danger"
+						/>
+					</div>
 				</div>
 			))}
 			<button onClick={() => addRow()} type="button">
@@ -1742,6 +1772,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 		story
 	} = props;
 	const {t} = useTranslation();
+	const {dispatch, stories} = useUndoableStoriesContext();
 	const [label, scheduleLabel, flushLabel] = useDebouncedSave(
 		choice.label,
 		next => onUpdate({label: next}),
@@ -1756,8 +1787,22 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 	const backpackState = states.find(
 		state => state.name === BACKPACK_STATE_NAME
 	);
-	const backpackReady = backpackSystemStatus(story).state === 'ready';
-	const timeReady = timeSystemStatus(story).state === 'ready';
+	const backpackStatus = backpackSystemStatus(story);
+	const timeStatus = timeSystemStatus(story);
+	const backpackReady = backpackStatus.state === 'ready';
+	const timeReady = timeStatus.state === 'ready';
+
+	function moveAction(index: number, delta: number) {
+		const actions = [...(choice.actions ?? [])];
+		const target = index + delta;
+
+		if (target < 0 || target >= actions.length) {
+			return;
+		}
+
+		[actions[index], actions[target]] = [actions[target], actions[index]];
+		onUpdate({actions});
+	}
 
 	return (
 		<div className="visual-passage-choice">
@@ -1857,6 +1902,38 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 									<IconVariablePlus />
 								)}
 								<span>{actionSentenceText(t, action, states)}</span>
+								<div className="action-row-toolbar">
+									<IconButton
+										disabled={disabled || actionIndex === 0}
+										icon={<IconArrowUp />}
+										iconOnly
+										label={t('dialogs.passageEdit.visual.moveUp')}
+										onClick={() => moveAction(actionIndex, -1)}
+									/>
+									<IconButton
+										disabled={
+											disabled || actionIndex === choice.actions.length - 1
+										}
+										icon={<IconArrowDown />}
+										iconOnly
+										label={t('dialogs.passageEdit.visual.moveDown')}
+										onClick={() => moveAction(actionIndex, 1)}
+									/>
+									<IconButton
+										disabled={disabled}
+										icon={<IconTrash />}
+										iconOnly
+										label={t('dialogs.passageEdit.visual.deleteAction')}
+										onClick={() =>
+											onUpdate({
+												actions: (choice.actions ?? []).filter(
+													(_, i) => i !== actionIndex
+												)
+											})
+										}
+										variant="danger"
+									/>
+								</div>
 							</div>
 							{action.operation !== 'advanceTime' && (
 							<select
@@ -1960,21 +2037,11 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 								value={action.value}
 							/>
 							)}
-							<button
-								onClick={() =>
-									onUpdate({
-										actions: (choice.actions ?? []).filter(
-											(_, i) => i !== actionIndex
-										)
-									})
-								}
-								type="button"
-							>×</button>
 						</div>
 					);
 					})}
 					<button
-					disabled={states.length === 0}
+					disabled={states.length === 0 && !timeReady}
 					onClick={() => {
 						const state = states[0];
 						onUpdate({
@@ -1996,14 +2063,27 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					}}
 					type="button"
 					>{t('dialogs.passageEdit.visual.addAction')}</button>
-					{!timeReady &&
-						(choice.actions ?? []).some(
-							action => action.operation === 'advanceTime'
-						) && (
-							<p className="system-action-warning">
-								{t('dialogs.passageEdit.visual.timeSystemRequired')}
-							</p>
-						)}
+					{!timeReady && (
+						<div className="system-capability-prompt">
+							<span>{t('dialogs.passageEdit.visual.timeSystemRequired')}</span>
+							<button
+								disabled={disabled}
+								onClick={() =>
+									dispatch(
+										createTimeSystem(stories, story),
+										'undoChange.createTimeSystem'
+									)
+								}
+								type="button"
+							>
+								{t(
+									timeStatus.state === 'missing'
+										? 'dialogs.passageEdit.visual.createSystem'
+										: 'dialogs.passageEdit.visual.repairSystem'
+								)}
+							</button>
+						</div>
+					)}
 					<div className="item-template-row">
 						<span>{t('dialogs.passageEdit.visual.itemAction')}</span>
 						<select
@@ -2082,9 +2162,25 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 						>{t('dialogs.passageEdit.visual.addItemAction')}</button>
 					</div>
 					{!backpackReady && (
-						<p className="empty-state">
-							{t('dialogs.passageEdit.visual.backpackMissingHint')}
-						</p>
+						<div className="system-capability-prompt">
+							<span>{t('dialogs.passageEdit.visual.backpackMissingHint')}</span>
+							<button
+								disabled={disabled}
+								onClick={() =>
+									dispatch(
+										createBackpackSystem(stories, story),
+										'undoChange.createBackpackSystem'
+									)
+								}
+								type="button"
+							>
+								{t(
+									backpackStatus.state === 'missing'
+										? 'dialogs.passageEdit.visual.createSystem'
+										: 'dialogs.passageEdit.visual.repairSystem'
+								)}
+							</button>
+						</div>
 					)}
 					{states.length === 0 && (
 						<p className="empty-state">
@@ -3139,11 +3235,14 @@ interface BlockShellProps {
 	condition?: VisualExpression;
 	depth: number;
 	disabled?: boolean;
+	dragging: boolean;
 	hidden: boolean;
 	icon: React.ComponentType;
 	insideLoop: boolean;
 	kindLabel: string;
 	onDelete: () => void;
+	onDragEnd: React.DragEventHandler<HTMLButtonElement>;
+	onDragStart: React.DragEventHandler<HTMLButtonElement>;
 	onMoveDown: () => void;
 	onMoveUp: () => void;
 	states: VisualStoryState[];
@@ -3168,11 +3267,14 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		condition,
 		depth,
 		disabled,
+		dragging,
 		hidden,
 		icon,
 		insideLoop,
 		kindLabel,
 		onDelete,
+		onDragEnd,
+		onDragStart,
 		onMoveDown,
 		onMoveUp,
 		states,
@@ -3201,7 +3303,7 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 				choiceGroup ? ' is-choice-group-member' : ''
 			}${choiceGroup?.start ? ' is-choice-group-start' : ''}${
 				choiceGroup?.end ? ' is-choice-group-end' : ''
-			}`}
+			}${dragging ? ' is-dragging' : ''}`}
 			data-kind={block.kind}
 			data-depth={depth}
 		>
@@ -3253,6 +3355,31 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 					)}
 				</button>
 				<div className="block-toolbar">
+					<button
+						aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+						aria-label={t('dialogs.passageEdit.visual.dragBlock')}
+						className="block-drag-handle"
+						disabled={disabled}
+						draggable={!disabled}
+						onDragEnd={onDragEnd}
+						onDragStart={onDragStart}
+						onKeyDown={event => {
+							if (!event.altKey) {
+								return;
+							}
+
+							if (event.key === 'ArrowUp' && canMoveUp) {
+								event.preventDefault();
+								onMoveUp();
+							} else if (event.key === 'ArrowDown' && canMoveDown) {
+								event.preventDefault();
+								onMoveDown();
+							}
+						}}
+						type="button"
+					>
+						<IconGripVertical />
+					</button>
 					{container && (
 						<IconButton
 							disabled={disabled}
@@ -3364,136 +3491,138 @@ const BlockList: React.FC<BlockListProps> = props => {
 		onChange(blocks.filter((_, i) => i !== index));
 	}
 
-	function addTextBlock() {
-		onChange([...blocks, {id: uuid(), kind: 'text', text: ''}]);
-	}
-
-	function addChoiceBlock() {
-		onChange([
-			...blocks,
-			{
-				actions: [],
-				id: uuid(),
-				kind: 'choice',
-				label: '',
-				targetPassageId: ''
-			}
-		]);
-	}
-
-	function addBranchBlock() {
-		onChange([
-			...blocks,
-			{
-				branches: [
-					{blocks: [], id: uuid()},
-					{blocks: [], id: uuid()}
-				],
-				id: uuid(),
-				kind: 'branch'
-			}
-		]);
-	}
-
-	function addVariableBlock() {
-		onChange([
-			...blocks,
-			{id: uuid(), kind: 'variable', source: 'state', stateId: ''}
-		]);
-	}
-
-	function addSetBlock() {
-		onChange([
-			...blocks,
-			{
-				id: uuid(),
-				kind: 'set',
-				operation: '=',
-				variableId: '',
-				value: {kind: 'literal', value: ''}
-			}
-		]);
-	}
-
-	function addRawBlock() {
-		onChange([...blocks, {id: uuid(), kind: 'raw', sugar: ''}]);
-	}
-
-	function addIncludeBlock() {
-		onChange([
-			...blocks,
-			{id: uuid(), kind: 'include', targetPassageId: ''}
-		]);
-	}
-
-	function addInteractionBlock() {
-		onChange([
-			...blocks,
-			{
-				content: '',
-				id: uuid(),
-				kind: 'interaction',
-				label: '',
-				operation: 'reveal'
-			}
-		]);
-	}
-
-	function addSwitchBlock() {
-		onChange([
-			...blocks,
-			{
-				cases: [],
-				defaultBlocks: [],
-				id: uuid(),
-				kind: 'switch',
-				stateId: ''
-			}
-		]);
-	}
-
-	function addLoopBlock() {
-		onChange([
-			...blocks,
-			{blocks: [], id: uuid(), kind: 'loop', stateId: ''}
-		]);
-	}
-
-	function addReturnMainBlock() {
-		onChange([
-			...blocks,
-			{id: uuid(), kind: 'returnMain', label: ''}
-		]);
-	}
-
-	/** Inserts a fresh block of the given kind at the end of the list. */
-	function insertModule(kind: VisualBlock['kind']) {
-		if (kind === 'text') {
-			addTextBlock();
-		} else if (kind === 'choice') {
-			addChoiceBlock();
-		} else if (kind === 'branch') {
-			addBranchBlock();
-		} else if (kind === 'variable') {
-			addVariableBlock();
-		} else if (kind === 'set') {
-			addSetBlock();
-		} else if (kind === 'raw') {
-			addRawBlock();
-		} else if (kind === 'include') {
-			addIncludeBlock();
-		} else if (kind === 'interaction') {
-			addInteractionBlock();
-		} else if (kind === 'switch') {
-			addSwitchBlock();
-		} else if (kind === 'loop') {
-			addLoopBlock();
-		} else if (kind === 'returnMain') {
-			addReturnMainBlock();
+	function createBlock(kind: VisualBlock['kind']): VisualBlock {
+		switch (kind) {
+			case 'text':
+				return {id: uuid(), kind, text: ''};
+			case 'choice':
+				return {actions: [], id: uuid(), kind, label: '', targetPassageId: ''};
+			case 'branch':
+				return {
+					branches: [
+						{blocks: [], id: uuid()},
+						{blocks: [], id: uuid()}
+					],
+					id: uuid(),
+					kind
+				};
+			case 'variable':
+				return {id: uuid(), kind, source: 'state', stateId: ''};
+			case 'set':
+				return {
+					id: uuid(),
+					kind,
+					operation: '=',
+					variableId: '',
+					value: {kind: 'literal', value: ''}
+				};
+			case 'raw':
+				return {id: uuid(), kind, sugar: ''};
+			case 'include':
+				return {id: uuid(), kind, targetPassageId: ''};
+			case 'interaction':
+				return {content: '', id: uuid(), kind, label: '', operation: 'reveal'};
+			case 'switch':
+				return {cases: [], defaultBlocks: [], id: uuid(), kind, stateId: ''};
+			case 'loop':
+				return {blocks: [], id: uuid(), kind, stateId: ''};
+			case 'returnMain':
+				return {id: uuid(), kind, label: ''};
 		}
 	}
 
-	const [selectorOpen, setSelectorOpen] = React.useState(false);
+	/** Inserts a fresh block at an exact boundary in this BlockList. */
+	function insertModuleAt(index: number, kind: VisualBlock['kind']) {
+		const target = Math.max(0, Math.min(index, blocks.length));
+		onChange([
+			...blocks.slice(0, target),
+			createBlock(kind),
+			...blocks.slice(target)
+		]);
+	}
+
+	function moveBlockTo(blockId: string, insertionIndex: number) {
+		const sourceIndex = blocks.findIndex(block => block.id === blockId);
+
+		if (sourceIndex < 0) {
+			return;
+		}
+
+		const targetIndex = Math.max(0, Math.min(insertionIndex, blocks.length));
+		const adjustedTarget = targetIndex > sourceIndex ? targetIndex - 1 : targetIndex;
+
+		if (adjustedTarget === sourceIndex) {
+			return;
+		}
+
+		const next = [...blocks];
+		const [moved] = next.splice(sourceIndex, 1);
+
+		next.splice(adjustedTarget, 0, moved);
+		onChange(next);
+	}
+
+	const [selectorIndex, setSelectorIndex] = React.useState<number>();
+	const [draggedBlockId, setDraggedBlockId] = React.useState<string>();
+	const [activeDropIndex, setActiveDropIndex] = React.useState<number>();
+
+	function renderInsertPoint(index: number, listEnd = false) {
+		const selectorOpen = selectorIndex === index;
+		const dropActive = activeDropIndex === index;
+
+		return (
+			<div
+				className={`block-insert-point${listEnd ? ' is-list-end' : ''}${
+					dropActive ? ' is-drop-active' : ''
+				}`}
+				data-insert-index={index}
+				key={`insert-${index}`}
+				onDragEnter={event => {
+					if (draggedBlockId) {
+						event.preventDefault();
+						event.stopPropagation();
+						setActiveDropIndex(index);
+					}
+				}}
+				onDragOver={event => {
+					if (draggedBlockId) {
+						event.preventDefault();
+						event.stopPropagation();
+						event.dataTransfer.dropEffect = 'move';
+					}
+				}}
+				onDrop={event => {
+					event.preventDefault();
+					event.stopPropagation();
+					if (draggedBlockId) {
+						moveBlockTo(draggedBlockId, index);
+					}
+					setDraggedBlockId(undefined);
+					setActiveDropIndex(undefined);
+				}}
+			>
+				<IconButton
+					disabled={disabled}
+					icon={<IconPlus />}
+					iconOnly={!listEnd}
+					label={t('dialogs.passageEdit.visual.addModule')}
+					onClick={() => setSelectorIndex(selectorOpen ? undefined : index)}
+					variant="create"
+				/>
+				{selectorOpen && (
+					<ModuleSelector
+						disabled={disabled}
+						onClose={() => setSelectorIndex(undefined)}
+						onInsert={kind => {
+							insertModuleAt(index, kind);
+							setSelectorIndex(undefined);
+						}}
+						states={states}
+					/>
+				)}
+			</div>
+		);
+	}
 
 	return (
 		<div className="visual-block-list" data-depth={depth}>
@@ -3518,6 +3647,8 @@ const BlockList: React.FC<BlockListProps> = props => {
 				const hidden = blockIsHidden(condition, states, simulated);
 
 				return (
+					<React.Fragment key={block.id}>
+						{renderInsertPoint(index)}
 					<BlockShell
 						block={block}
 						canMoveDown={index < blocks.length - 1}
@@ -3539,12 +3670,21 @@ const BlockList: React.FC<BlockListProps> = props => {
 						condition={condition}
 						depth={depth}
 						disabled={disabled}
+						dragging={draggedBlockId === block.id}
 						hidden={hidden}
 						icon={meta.icon}
 						insideLoop={insideLoop}
-						key={block.id}
 						kindLabel={t(meta.labelKey)}
 						onDelete={() => deleteBlock(index)}
+						onDragEnd={() => {
+							setDraggedBlockId(undefined);
+							setActiveDropIndex(undefined);
+						}}
+						onDragStart={event => {
+							event.dataTransfer.effectAllowed = 'move';
+							event.dataTransfer.setData('text/plain', block.id);
+							setDraggedBlockId(block.id);
+						}}
 						onMoveDown={() => moveBlock(index, 1)}
 						onMoveUp={() => moveBlock(index, -1)}
 						states={states}
@@ -3691,28 +3831,10 @@ const BlockList: React.FC<BlockListProps> = props => {
 							/>
 						)}
 					</BlockShell>
+					</React.Fragment>
 				);
 			})}
-			<div className="block-add-menu">
-				<IconButton
-					disabled={disabled}
-					icon={<IconPlus />}
-					label={t('dialogs.passageEdit.visual.addModule')}
-					onClick={() => setSelectorOpen(open => !open)}
-					variant="create"
-				/>
-				{selectorOpen && (
-					<ModuleSelector
-						disabled={disabled}
-						onClose={() => setSelectorOpen(false)}
-						onInsert={kind => {
-							insertModule(kind);
-							setSelectorOpen(false);
-						}}
-						states={states}
-					/>
-				)}
-			</div>
+			{renderInsertPoint(blocks.length, true)}
 		</div>
 	);
 };

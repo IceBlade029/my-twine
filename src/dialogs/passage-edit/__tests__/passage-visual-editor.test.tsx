@@ -1029,11 +1029,211 @@ describe('phase 10B visual structure', () => {
 	});
 });
 
+describe('phase 10C precise insertion and ordering', () => {
+	it('inserts a module at an exact boundary instead of appending', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{id: 'before', kind: 'text', text: 'Before'},
+					{id: 'after', kind: 'text', text: 'After'}
+				],
+				version: 2
+			};
+		});
+		const insertionPoint = container.querySelector(
+			'.visual-block-list[data-depth="0"] > [data-insert-index="1"]'
+		) as HTMLElement;
+
+		fireEvent.click(
+			within(insertionPoint).getByRole('button', {
+				name: 'dialogs.passageEdit.visual.addModule'
+			})
+		);
+		fireEvent.click(
+			within(insertionPoint).getAllByText(
+				'dialogs.passageEdit.visual.blockKindRaw'
+			)[0]
+		);
+
+		expect(
+			[...container.querySelectorAll('.visual-block-list[data-depth="0"] > .visual-block')]
+				.map(element => element.getAttribute('data-kind'))
+		).toEqual(['text', 'raw', 'text']);
+	});
+
+	it('moves a block from its drag handle with the keyboard', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{id: 'first', kind: 'text', text: 'First'},
+					{id: 'second', kind: 'raw', sugar: 'Second'}
+				],
+				version: 2
+			};
+		});
+		const handles = screen.getAllByLabelText(
+			'dialogs.passageEdit.visual.dragBlock'
+		);
+
+		fireEvent.keyDown(handles[1], {altKey: true, key: 'ArrowUp'});
+
+		expect(
+			[...container.querySelectorAll('.visual-block-list[data-depth="0"] > .visual-block')]
+				.map(element => element.getAttribute('data-kind'))
+		).toEqual(['raw', 'text']);
+	});
+
+	it('drops a dragged block at another boundary in the same list', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{id: 'first', kind: 'text', text: 'First'},
+					{id: 'second', kind: 'raw', sugar: 'Second'}
+				],
+				version: 2
+			};
+		});
+		const handles = screen.getAllByLabelText(
+			'dialogs.passageEdit.visual.dragBlock'
+		);
+		const firstBoundary = container.querySelector(
+			'.visual-block-list[data-depth="0"] > [data-insert-index="0"]'
+		) as HTMLElement;
+		const dataTransfer = {
+			dropEffect: 'none',
+			effectAllowed: 'none',
+			setData: jest.fn()
+		};
+
+		fireEvent.dragStart(handles[1], {dataTransfer});
+		fireEvent.dragEnter(firstBoundary, {dataTransfer});
+		fireEvent.dragOver(firstBoundary, {dataTransfer});
+		fireEvent.drop(firstBoundary, {dataTransfer});
+
+		expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'second');
+		expect(
+			[...container.querySelectorAll('.visual-block-list[data-depth="0"] > .visual-block')]
+				.map(element => element.getAttribute('data-kind'))
+		).toEqual(['raw', 'text']);
+	});
+
+	it('reorders condition rows without changing their contents', () => {
+		renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number'},
+					{defaultValue: 0, id: 'courage', name: 'Courage', type: 'number'}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						condition: {
+							kind: 'binary',
+							left: cond('>=', 'trust', 2),
+							operator: '&&',
+							right: cond('>=', 'courage', 3)
+						},
+						id: 'gated',
+						kind: 'text',
+						text: 'Ready'
+					}
+				],
+				version: 2
+			};
+		});
+		const rows = document.querySelectorAll('.condition-row');
+
+		fireEvent.click(
+			within(rows[0] as HTMLElement).getByLabelText(
+				'dialogs.passageEdit.visual.moveDown'
+			)
+		);
+
+		expect(
+			screen
+				.getAllByLabelText('dialogs.passageEdit.visual.conditionState')
+				.map(input => (input as HTMLSelectElement).value)
+		).toEqual(['courage', 'trust']);
+	});
+
+	it('reorders choice actions and keeps their operation data', () => {
+		renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number'}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						actions: [
+							{operation: 'set', stateId: 'trust', value: 1},
+							{operation: 'increase', stateId: 'trust', value: 2}
+						],
+						id: 'choice-actions',
+						kind: 'choice',
+						label: 'Act',
+						targetPassageId: story.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+		const actionRows = document.querySelectorAll('.action-row');
+
+		fireEvent.click(
+			within(actionRows[0] as HTMLElement).getByLabelText(
+				'dialogs.passageEdit.visual.moveDown'
+			)
+		);
+
+		expect(
+			screen
+				.getAllByLabelText('dialogs.passageEdit.visual.actionOperation')
+				.map(input => (input as HTMLSelectElement).value)
+		).toEqual(['increase', 'set']);
+	});
+
+	it('offers inline system creation beside unavailable domain actions', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{
+						actions: [],
+						id: 'choice-capabilities',
+						kind: 'choice',
+						label: 'Act',
+						targetPassageId: story.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+		const prompts = container.querySelectorAll('.system-capability-prompt');
+
+		expect(prompts).toHaveLength(2);
+		expect(
+			within(prompts[0] as HTMLElement).getByRole('button', {
+				name: 'dialogs.passageEdit.visual.createSystem'
+			})
+		).toBeEnabled();
+		expect(
+			within(prompts[1] as HTMLElement).getByRole('button', {
+				name: 'dialogs.passageEdit.visual.createSystem'
+			})
+		).toBeEnabled();
+	});
+});
+
 describe('module selector (P2)', () => {
-	it('opens the grouped selector from a single insert button and adds a module', () => {
+	it('opens the grouped selector from the visible end insertion button', () => {
 		const {story} = renderComponent();
 
-		// No per-kind add buttons remain, only the single insert button.
+		// No permanent per-kind add buttons remain; the visible end insertion
+		// button opens the shared selector.
 		expect(
 			screen.queryByText('dialogs.passageEdit.visual.addChoice')
 		).not.toBeInTheDocument();

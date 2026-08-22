@@ -2790,11 +2790,38 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 						key={item.id}
 					>
 						<div className="branch-condition">
-							{!isElse ? (
-								<>
+							<div className="branch-path-heading">
+								{!isElse ? (
 									<span className="branch-path-label is-match">
 										{t('dialogs.passageEdit.visual.whenMatched')}
 									</span>
+								) : (
+									<span className="branch-path-label is-else">
+										{t('dialogs.passageEdit.visual.otherwise')}
+									</span>
+								)}
+								<div className="branch-path-statuses">
+									{!isElse && !item.condition && (
+										<span className="block-status-tag error-status">
+											{t('dialogs.passageEdit.visual.statusIncomplete')}
+										</span>
+									)}
+									{inactive && (
+										<span className="not-hit-badge">
+											{t('dialogs.passageEdit.visual.statusNotHit')}
+										</span>
+									)}
+									<button
+										disabled={disabled || branch.branches.length <= 2}
+										onClick={() => removeBranch(index)}
+										type="button"
+									>
+										×
+									</button>
+								</div>
+							</div>
+							{!isElse && (
+								<div className="branch-condition-editor">
 									<ConditionEditor
 										condition={item.condition}
 										onChange={condition =>
@@ -2802,29 +2829,8 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 										}
 										states={states}
 									/>
-									{!item.condition && (
-										<span className="block-status-tag error-status">
-											{t('dialogs.passageEdit.visual.statusIncomplete')}
-										</span>
-									)}
-								</>
-							) : (
-								<span className="branch-path-label is-else">
-									{t('dialogs.passageEdit.visual.otherwise')}
-								</span>
+								</div>
 							)}
-							{inactive && (
-								<span className="not-hit-badge">
-									{t('dialogs.passageEdit.visual.statusNotHit')}
-								</span>
-							)}
-							<button
-								disabled={disabled || branch.branches.length <= 2}
-								onClick={() => removeBranch(index)}
-								type="button"
-							>
-								×
-							</button>
 						</div>
 						<BlockList
 							blocks={item.blocks}

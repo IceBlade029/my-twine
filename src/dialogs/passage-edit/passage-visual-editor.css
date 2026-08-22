@@ -16,9 +16,15 @@
 
 .passage-visual-editor section > label,
 .visual-passage-choice label,
+.visual-passage-text label,
 .visual-passage-variable label,
+.visual-passage-set label,
 .visual-passage-include label,
-.visual-passage-interaction label {
+.visual-passage-interaction label,
+.visual-passage-return-main label,
+.visual-passage-raw label,
+.visual-passage-switch label,
+.visual-passage-loop label {
 	display: flex;
 	flex-direction: column;
 	font-weight: bold;
@@ -435,11 +441,16 @@
 }
 
 .visual-passage-choice,
+.visual-passage-text,
 .visual-passage-variable,
+.visual-passage-set,
 .visual-passage-include,
 .visual-passage-interaction,
+.visual-passage-return-main,
+.visual-passage-raw,
 .visual-passage-switch,
-.visual-passage-loop {
+.visual-passage-loop,
+.visual-passage-branch {
 	background: var(--light-gray-translucent);
 	border: 1px solid var(--light-gray);
 	border-radius: var(--corner-round);
@@ -451,10 +462,18 @@
 
 .visual-passage-choice input,
 .visual-passage-choice select,
+.visual-passage-text input,
+.visual-passage-text select,
 .visual-passage-variable select,
+.visual-passage-set input,
+.visual-passage-set select,
 .visual-passage-include select,
 .visual-passage-interaction input,
 .visual-passage-interaction select,
+.visual-passage-return-main input,
+.visual-passage-return-main select,
+.visual-passage-raw input,
+.visual-passage-raw select,
 .visual-passage-switch select,
 .visual-passage-switch input,
 .visual-passage-loop select,
@@ -507,6 +526,8 @@
 /* ---- P2: condition dual view ---- */
 
 .condition-editor-wrap {
+	container-name: condition-editor;
+	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	gap: var(--grid-size);
@@ -518,7 +539,8 @@
 }
 
 .condition-editor-tabs button.is-active {
-	background: var(--accent);
+	background: var(--visual-tone-control);
+	border-color: var(--visual-tone-control);
 	color: var(--off-white);
 }
 
@@ -542,12 +564,31 @@
 
 .condition-feedback {
 	display: flex;
-	flex-direction: column;
-	gap: var(--grid-size);
+	flex-wrap: wrap;
+	gap: calc(var(--grid-size) / 2) var(--grid-size);
 }
 
 .condition-feedback p {
+	background: var(--light-gray-translucent);
+	border-radius: 999px;
+	font-size: 0.82em;
 	margin: 0;
+	padding: calc(var(--grid-size) / 3) calc(var(--grid-size) * 0.75);
+}
+
+.condition-row {
+	align-items: end;
+	display: grid;
+	gap: var(--grid-size);
+	grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.condition-row > .condition-and {
+	grid-column: 1 / -1;
+}
+
+.condition-row > .condition-editor {
+	min-width: 0;
 }
 
 .condition-warning {
@@ -667,15 +708,25 @@
 /* ---- Phase 10B semantic editors ---- */
 
 .visual-passage-choice,
+.visual-passage-text,
 .visual-passage-variable,
+.visual-passage-set,
 .visual-passage-include,
 .visual-passage-interaction,
+.visual-passage-return-main,
+.visual-passage-raw,
 .visual-passage-switch,
-.visual-passage-loop {
+.visual-passage-loop,
+.visual-passage-branch {
 	background: transparent;
 	border: 0;
 	border-radius: 0;
 	padding: 0;
+}
+
+.visual-passage-choice {
+	container-name: choice-editor;
+	container-type: inline-size;
 }
 
 .choice-route-grid,
@@ -683,6 +734,10 @@
 	display: grid;
 	gap: var(--grid-size);
 	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.choice-detail-grid {
+	grid-template-columns: minmax(14rem, 0.8fr) minmax(22rem, 1.2fr);
 }
 
 .choice-condition-panel,
@@ -695,6 +750,11 @@
 	gap: var(--grid-size);
 	min-width: 0;
 	padding: var(--grid-size);
+}
+
+.choice-action-panel {
+	container-name: action-panel;
+	container-type: inline-size;
 }
 
 .choice-condition-panel > span,
@@ -743,10 +803,11 @@
 	align-items: end;
 	display: grid;
 	gap: var(--grid-size);
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 5rem auto;
+	grid-template-columns: minmax(0, 1fr) 5rem auto;
 }
 
-.item-template-row > span {
+.item-template-row > span,
+.item-template-row > select {
 	grid-column: 1 / -1;
 }
 
@@ -774,7 +835,6 @@
 	width: var(--grid-size);
 }
 
-.branch-condition,
 .switch-case-heading,
 .switch-default-heading {
 	align-items: center;
@@ -783,8 +843,35 @@
 	gap: var(--grid-size);
 }
 
-.branch-condition .condition-editor-wrap {
-	flex: 1 1 22rem;
+.branch-condition {
+	display: flex;
+	flex-direction: column;
+	gap: var(--grid-size);
+}
+
+.branch-path-heading,
+.branch-path-statuses {
+	align-items: center;
+	display: flex;
+	gap: calc(var(--grid-size) / 2);
+}
+
+.branch-path-heading {
+	justify-content: space-between;
+}
+
+.branch-path-statuses {
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	min-width: 0;
+}
+
+.branch-condition-editor {
+	background: color-mix(in srgb, var(--background) 97%, var(--visual-tone-control));
+	border: 1px solid color-mix(in srgb, var(--light-gray) 75%, var(--visual-tone-control));
+	border-radius: var(--corner-round);
+	min-width: 0;
+	padding: var(--grid-size);
 }
 
 .branch-path-label,
@@ -823,5 +910,41 @@
 
 	.item-template-row > select {
 		grid-column: 1 / -1;
+	}
+}
+
+@container choice-editor (max-width: 40rem) {
+	.choice-detail-grid,
+	.choice-route-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+@container condition-editor (max-width: 32rem) {
+	.condition-editor {
+		grid-template-columns: minmax(0, 1fr) minmax(5rem, 0.55fr);
+	}
+
+	.condition-editor > :nth-child(n + 3) {
+		grid-column: 1 / -1;
+	}
+
+	.condition-expression {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.condition-expression > button {
+		align-self: flex-end;
+	}
+}
+
+@container action-panel (max-width: 32rem) {
+	.action-row {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.action-row > button:last-child {
+		justify-self: end;
 	}
 }

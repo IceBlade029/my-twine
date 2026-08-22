@@ -907,6 +907,45 @@ describe('<PassageVisualEditor>', () => {
 });
 
 describe('phase 10B visual structure', () => {
+	it('keeps a branch path heading separate from its condition controls', () => {
+		const {container} = renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 0, id: 'trust', name: '信任度', type: 'number'}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						branches: [
+							{blocks: [], condition: cond('>=', 'trust', 2), id: 'match'},
+							{blocks: [], id: 'else'}
+						],
+						id: 'branch-layout',
+						kind: 'branch'
+					}
+				],
+				version: 2
+			};
+		});
+		const matchBranch = container.querySelector(
+			'.visual-passage-branch .branch'
+		);
+
+		expect(
+			matchBranch?.querySelector('.branch-path-heading .condition-editor-wrap')
+		).toBeNull();
+		expect(
+			matchBranch?.querySelector(
+				'.branch-condition-editor .condition-editor-wrap'
+			)
+		).not.toBeNull();
+		expect(
+			matchBranch?.querySelector('.condition-row > .condition-editor')
+		).not.toBeNull();
+	});
+
 	it('visually groups adjacent choices and breaks the group at another block', () => {
 		const {container} = renderComponent(story => {
 			const target = story.passages[1].id;

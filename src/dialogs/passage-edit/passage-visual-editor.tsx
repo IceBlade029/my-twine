@@ -5,11 +5,15 @@ import {
 	IconArrowsRight,
 	IconArrowsSplit,
 	IconArrowUp,
+	IconBackpack,
+	IconCheck,
 	IconChevronDown,
 	IconChevronUp,
+	IconClock,
 	IconCode,
 	IconFileImport,
 	IconGitBranch,
+	IconAlertTriangle,
 	IconPlus,
 	IconPointer,
 	IconRepeat,
@@ -24,9 +28,14 @@ import * as React from 'react';
 import {useTranslation} from 'react-i18next';
 import {IconButton} from '../../components/control/icon-button';
 import {
+	backpackSystemStatus,
 	BACKPACK_STATE_NAME,
+	createBackpackSystem,
+	createTimeSystem,
+	highlightPassages,
 	Passage,
 	Story,
+	timeSystemStatus,
 	VisualBinaryOperator,
 	VisualBlock,
 	VisualBranch,
@@ -839,6 +848,45 @@ export function actionSentenceText(
 		state: state?.name ?? '?',
 		value: String(action.value)
 	});
+}
+
+function groupedActionSentences(
+	t: TFunction,
+	actions: VisualStateAction[],
+	states: VisualStoryState[]
+) {
+	const rows: Array<{key: string; text: string}> = [];
+
+	actions.forEach((action, index) => {
+		const state = states.find(item => item.id === action.stateId);
+		const itemAction =
+			state?.name === BACKPACK_STATE_NAME &&
+			(action.operation === 'push' || action.operation === 'remove');
+		const previous = rows[rows.length - 1];
+		const previousAction = actions[index - 1];
+
+		if (
+			itemAction &&
+			previous &&
+			previousAction?.operation === action.operation &&
+			previousAction.stateId === action.stateId &&
+			previousAction.value === action.value
+		) {
+			const match = previous.text.match(/ × (\d+)$/);
+			const count = match ? Number(match[1]) + 1 : 2;
+			previous.text = `${actionSentenceText(t, action, states)} × ${count}`;
+			return;
+		}
+
+		rows.push({
+			key: `${index}-${action.operation}-${String(action.value)}`,
+			text: itemAction
+				? `${actionSentenceText(t, action, states)} × 1`
+				: actionSentenceText(t, action, states)
+		});
+	});
+
+	return rows;
 }
 
 /**
@@ -1704,9 +1752,12 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 		'obtain' | 'consume' | ''
 	>('');
 	const [itemTemplateName, setItemTemplateName] = React.useState('');
+	const [itemTemplateQuantity, setItemTemplateQuantity] = React.useState(1);
 	const backpackState = states.find(
 		state => state.name === BACKPACK_STATE_NAME
 	);
+	const backpackReady = backpackSystemStatus(story).state === 'ready';
+	const timeReady = timeSystemStatus(story).state === 'ready';
 
 	return (
 		<div className="visual-passage-choice">
@@ -1715,6 +1766,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					{t('dialogs.passageEdit.visual.choiceNumber', {count: index + 1})}
 				</strong>
 			</div>
+			<div className="choice-route-grid">
 			<label>
 				<span>{t('dialogs.passageEdit.visual.choiceLabel')}</span>
 				<input
@@ -1762,7 +1814,9 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					</option>
 				</select>
 			</label>
-			<div>
+			</div>
+			<div className="choice-detail-grid">
+			<div className="choice-condition-panel">
 				<span>{t('dialogs.passageEdit.visual.condition')}</span>
 				<ConditionEditor
 					condition={choice.condition}
@@ -1771,16 +1825,39 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 				/>
 			</div>
 			{choice.specialTarget ? (
-				<p className="empty-state">
-					{t('dialogs.passageEdit.visual.specialTargetActionsUnavailable')}
-				</p>
+				<div className="choice-action-panel">
+					<span>{t('dialogs.passageEdit.visual.actions')}</span>
+					<p className="empty-state">
+						{t('dialogs.passageEdit.visual.specialTargetActionsUnavailable')}
+					</p>
+				</div>
 			) : (
-				<div className="choice-actions">
+				<div className="choice-actions choice-action-panel">
 					<span>{t('dialogs.passageEdit.visual.actions')}</span>
 					{(choice.actions ?? []).map((action, actionIndex) => {
 					const state = states.find(item => item.id === action.stateId);
 					return (
-						<div className="action-row" key={actionIndex}>
+						<div
+							className={`action-row action-${
+								action.operation === 'advanceTime'
+									? 'time'
+									: state?.name === BACKPACK_STATE_NAME &&
+										(action.operation === 'push' || action.operation === 'remove')
+										? 'item'
+										: 'state'
+							}`}
+							key={actionIndex}
+						>
+							<div className="action-row-heading">
+								{action.operation === 'advanceTime' ? (
+									<IconClock />
+								) : state?.name === BACKPACK_STATE_NAME ? (
+									<IconBackpack />
+								) : (
+									<IconVariablePlus />
+								)}
+								<span>{actionSentenceText(t, action, states)}</span>
+							</div>
 							{action.operation !== 'advanceTime' && (
 							<select
 								aria-label={t('dialogs.passageEdit.visual.actionState')}
@@ -1827,7 +1904,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 								<option value="set">
 									{t('dialogs.passageEdit.visual.set')}
 								</option>
-								<option value="advanceTime">
+								<option disabled={!timeReady} value="advanceTime">
 									{t('dialogs.passageEdit.visual.operationAdvanceTime')}
 								</option>
 								{state?.type === 'number' && (
@@ -1897,6 +1974,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					);
 					})}
 					<button
+					disabled={states.length === 0}
 					onClick={() => {
 						const state = states[0];
 						onUpdate({
@@ -1918,6 +1996,14 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					}}
 					type="button"
 					>{t('dialogs.passageEdit.visual.addAction')}</button>
+					{!timeReady &&
+						(choice.actions ?? []).some(
+							action => action.operation === 'advanceTime'
+						) && (
+							<p className="system-action-warning">
+								{t('dialogs.passageEdit.visual.timeSystemRequired')}
+							</p>
+						)}
 					<div className="item-template-row">
 						<span>{t('dialogs.passageEdit.visual.itemAction')}</span>
 						<select
@@ -1945,37 +2031,57 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 							placeholder={t('dialogs.passageEdit.visual.itemNamePlaceholder')}
 							value={itemTemplateName}
 						/>
+						<input
+							aria-label={t('dialogs.passageEdit.visual.itemQuantity')}
+							min={1}
+							onChange={event =>
+								setItemTemplateQuantity(
+									Math.max(Number(event.target.value) || 1, 1)
+								)
+							}
+							type="number"
+							value={itemTemplateQuantity}
+						/>
 						<button
 							disabled={
 								!itemTemplateAction ||
 								!itemTemplateName.trim() ||
-								!backpackState
+								!backpackState ||
+								!backpackReady
 							}
 							onClick={() => {
 								const item = itemTemplateName.trim();
 
-								if (!itemTemplateAction || !item || !backpackState) {
+								if (
+									!itemTemplateAction ||
+									!item ||
+									!backpackState ||
+									!backpackReady
+								) {
 									return;
 								}
 
 								onUpdate({
 									actions: [
 										...(choice.actions ?? []),
-										{
-											operation:
-												itemTemplateAction === 'obtain' ? 'push' : 'remove',
-											stateId: backpackState.id,
-											value: item
-										}
+									...Array.from({length: itemTemplateQuantity}, () => ({
+										operation:
+											itemTemplateAction === 'obtain'
+												? ('push' as const)
+												: ('remove' as const),
+										stateId: backpackState.id,
+										value: item
+									}))
 									]
 								});
 								setItemTemplateAction('');
 								setItemTemplateName('');
+								setItemTemplateQuantity(1);
 							}}
 							type="button"
 						>{t('dialogs.passageEdit.visual.addItemAction')}</button>
 					</div>
-					{!backpackState && (
+					{!backpackReady && (
 						<p className="empty-state">
 							{t('dialogs.passageEdit.visual.backpackMissingHint')}
 						</p>
@@ -1987,12 +2093,11 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 					)}
 				</div>
 			)}
+			</div>
 			{(choice.actions ?? []).length > 0 && (
 				<ul className="choice-actions-summary">
-					{(choice.actions ?? []).map((action, actionIndex) => (
-						<li key={actionIndex}>
-							{actionSentenceText(t, action, states)}
-						</li>
+					{groupedActionSentences(t, choice.actions ?? [], states).map(row => (
+						<li key={row.key}>{row.text}</li>
 					))}
 				</ul>
 			)}
@@ -2687,7 +2792,9 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 						<div className="branch-condition">
 							{!isElse ? (
 								<>
-									<span>{t('dialogs.passageEdit.visual.condition')}</span>
+									<span className="branch-path-label is-match">
+										{t('dialogs.passageEdit.visual.whenMatched')}
+									</span>
 									<ConditionEditor
 										condition={item.condition}
 										onChange={condition =>
@@ -2702,8 +2809,8 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 									)}
 								</>
 							) : (
-								<span className="else-label">
-									{t('dialogs.passageEdit.visual.else')}
+								<span className="branch-path-label is-else">
+									{t('dialogs.passageEdit.visual.otherwise')}
 								</span>
 							)}
 							{inactive && (
@@ -2736,7 +2843,7 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 				);
 			})}
 			<button disabled={disabled} onClick={addBranch} type="button">
-				Add branch
+				{t('dialogs.passageEdit.visual.addBranch')}
 			</button>
 		</div>
 	);
@@ -2837,7 +2944,9 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 						key={caseItem.id}
 					>
 						<div className="switch-case-heading">
-							<span>{t('dialogs.passageEdit.visual.switchCase')}</span>
+							<span className="switch-path-label">
+								{t('dialogs.passageEdit.visual.switchCase')}
+							</span>
 							{inactive && (
 								<span className="not-hit-badge">
 									{t('dialogs.passageEdit.visual.statusNotHit')}
@@ -2882,7 +2991,9 @@ const SwitchBlockEditor: React.FC<SwitchBlockEditorProps> = props => {
 				}
 			>
 				<div className="switch-default-heading">
-					<span>{t('dialogs.passageEdit.visual.switchDefault')}</span>
+					<span className="switch-path-label is-default">
+						{t('dialogs.passageEdit.visual.switchDefault')}
+					</span>
 					{simulatorOpen && active !== undefined && (
 						<span className="not-hit-badge">
 							{t('dialogs.passageEdit.visual.statusNotHit')}
@@ -3012,6 +3123,13 @@ interface BlockShellProps {
 	canMoveDown: boolean;
 	canMoveUp: boolean;
 	children: React.ReactNode;
+	choiceGroup?: {
+		actions: number;
+		conditions: number;
+		count: number;
+		end: boolean;
+		start: boolean;
+	};
 	condition?: VisualExpression;
 	depth: number;
 	disabled?: boolean;
@@ -3040,6 +3158,7 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		canMoveDown,
 		canMoveUp,
 		children,
+		choiceGroup,
 		condition,
 		depth,
 		disabled,
@@ -3070,11 +3189,28 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 
 	return (
 		<div
-			className={`visual-block${selected ? ' is-selected' : ''}${
+			className={`visual-block block-kind-${block.kind}${selected ? ' is-selected' : ''}${
 				expanded ? ' is-expanded' : ' is-compact'
-			}${container ? ' is-container' : ''}`}
+			}${container ? ' is-container' : ''}${
+				choiceGroup ? ' is-choice-group-member' : ''
+			}${choiceGroup?.start ? ' is-choice-group-start' : ''}${
+				choiceGroup?.end ? ' is-choice-group-end' : ''
+			}`}
+			data-kind={block.kind}
 			data-depth={depth}
 		>
+			{choiceGroup?.start && (
+				<div className="choice-group-heading">
+					<span>{t('dialogs.passageEdit.visual.choiceGroup')}</span>
+					<span className="choice-group-metrics">
+						{t('dialogs.passageEdit.visual.choiceGroupMetrics', {
+							actions: choiceGroup.actions,
+							conditions: choiceGroup.conditions,
+							count: choiceGroup.count
+						})}
+					</span>
+				</div>
+			)}
 			<div className="block-header">
 				<button
 					aria-expanded={expanded}
@@ -3133,21 +3269,21 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 						disabled={disabled || !canMoveUp}
 						icon={<IconArrowUp />}
 						iconOnly
-						label="Move up"
+						label={t('dialogs.passageEdit.visual.moveUp')}
 						onClick={onMoveUp}
 					/>
 					<IconButton
 						disabled={disabled || !canMoveDown}
 						icon={<IconArrowDown />}
 						iconOnly
-						label="Move down"
+						label={t('dialogs.passageEdit.visual.moveDown')}
 						onClick={onMoveDown}
 					/>
 					<IconButton
 						disabled={disabled}
 						icon={<IconTrash />}
 						iconOnly
-						label="Delete block"
+						label={t('dialogs.passageEdit.visual.deleteBlock')}
 						onClick={onDelete}
 						variant="danger"
 					/>
@@ -3359,6 +3495,18 @@ const BlockList: React.FC<BlockListProps> = props => {
 				const choiceIndex = blocks
 					.slice(0, index)
 					.filter(item => item.kind === 'choice').length;
+				const choiceGroupStart =
+					block.kind === 'choice' && blocks[index - 1]?.kind !== 'choice';
+				const choiceGroupEnd =
+					block.kind === 'choice' && blocks[index + 1]?.kind !== 'choice';
+				const choiceRun = choiceGroupStart
+					? blocks
+							.slice(index)
+							.filter((item, runIndex, list) =>
+								list.slice(0, runIndex + 1).every(entry => entry.kind === 'choice')
+							)
+							.filter((item): item is VisualChoiceBlock => item.kind === 'choice')
+					: [];
 				const meta = blockKindMeta[block.kind];
 				const condition = 'condition' in block ? block.condition : undefined;
 				const hidden = blockIsHidden(condition, states, simulated);
@@ -3368,6 +3516,20 @@ const BlockList: React.FC<BlockListProps> = props => {
 						block={block}
 						canMoveDown={index < blocks.length - 1}
 						canMoveUp={index > 0}
+						choiceGroup={
+							block.kind === 'choice'
+								? {
+										start: choiceGroupStart,
+										end: choiceGroupEnd,
+										count: choiceRun.length,
+										conditions: choiceRun.filter(item => item.condition).length,
+										actions: choiceRun.reduce(
+											(total, item) => total + item.actions.length,
+											0
+										)
+									}
+								: undefined
+						}
 						condition={condition}
 						depth={depth}
 						disabled={disabled}
@@ -3669,6 +3831,114 @@ const ModuleSelector: React.FC<ModuleSelectorProps> = props => {
 	);
 };
 
+interface StorySystemsOverviewProps {
+	disabled?: boolean;
+	story: Story;
+}
+
+/** Compact story-level status cards for the two installed domain systems. */
+const StorySystemsOverview: React.FC<StorySystemsOverviewProps> = props => {
+	const {disabled, story} = props;
+	const {dispatch, stories} = useUndoableStoriesContext();
+	const {t} = useTranslation();
+	const time = timeSystemStatus(story);
+	const backpack = backpackSystemStatus(story);
+
+	function statusLabel(status: 'missing' | 'incomplete' | 'ready') {
+		return t(`dialogs.passageEdit.visual.systemStatus.${status}`);
+	}
+
+	function locate(name: string) {
+		const target = story.passages.find(passage => passage.name === name);
+
+		if (target) {
+			dispatch(highlightPassages(story, [target.id]));
+		}
+	}
+
+	return (
+		<section className="story-systems-overview">
+			<div className="system-overview-heading">
+				<strong>{t('dialogs.passageEdit.visual.storySystems')}</strong>
+				<span>{t('dialogs.passageEdit.visual.storySystemsHint')}</span>
+			</div>
+			<div className="system-card-list">
+				<article className={`system-card system-time is-${time.state}`}>
+					<div className="system-card-icon"><IconClock /></div>
+					<div className="system-card-content">
+						<div className="system-card-title">
+							<strong>{t('dialogs.passageEdit.visual.timeSystem')}</strong>
+							<span className="system-status">
+								{time.state === 'ready' ? <IconCheck /> : <IconAlertTriangle />}
+								{statusLabel(time.state)}
+							</span>
+						</div>
+						<span className="system-artifacts">
+							{t('dialogs.passageEdit.visual.timeSystemArtifacts')}
+						</span>
+					</div>
+					{time.state === 'ready' ? (
+						<button disabled={disabled} onClick={() => locate('StoryCaption')} type="button">
+							{t('dialogs.passageEdit.visual.locateSystem')}
+						</button>
+					) : (
+						<button
+							disabled={disabled}
+							onClick={() =>
+								dispatch(createTimeSystem(stories, story), 'undoChange.createTimeSystem')
+							}
+							type="button"
+						>
+							{t(
+								time.state === 'missing'
+									? 'dialogs.passageEdit.visual.createSystem'
+									: 'dialogs.passageEdit.visual.repairSystem'
+							)}
+						</button>
+					)}
+				</article>
+				<article className={`system-card system-backpack is-${backpack.state}`}>
+					<div className="system-card-icon"><IconBackpack /></div>
+					<div className="system-card-content">
+						<div className="system-card-title">
+							<strong>{t('dialogs.passageEdit.visual.backpackSystem')}</strong>
+							<span className="system-status">
+								{backpack.state === 'ready' ? <IconCheck /> : <IconAlertTriangle />}
+								{statusLabel(backpack.state)}
+							</span>
+						</div>
+						<span className="system-artifacts">
+							{t('dialogs.passageEdit.visual.backpackSystemArtifacts')}
+						</span>
+					</div>
+					{backpack.state === 'ready' ? (
+						<button disabled={disabled} onClick={() => locate('背包')} type="button">
+							{t('dialogs.passageEdit.visual.locateSystem')}
+						</button>
+					) : (
+						<button
+							disabled={disabled}
+							onClick={() =>
+								dispatch(
+									createBackpackSystem(stories, story),
+									'undoChange.createBackpackSystem'
+								)
+							}
+							type="button"
+						>
+							{t(
+								backpack.state === 'missing'
+									? 'dialogs.passageEdit.visual.createSystem'
+									: 'dialogs.passageEdit.visual.repairSystem'
+							)}
+						</button>
+					)}
+				</article>
+			</div>
+		</section>
+	);
+};
+
 export interface PassageVisualEditorProps {
 	disabled?: boolean;
 	passage: Passage & {visual: VisualPassageContent};
@@ -3875,6 +4145,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 						: t('dialogs.passageEdit.visual.saved')}
 				</span>
 			</div>
+			<StorySystemsOverview disabled={disabled} story={story} />
 			{passage.name === 'StoryInit' && states.length > 0 && (
 				<section className="story-init-preview">
 					<div className="section-heading">
@@ -3885,7 +4156,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 			)}
 			<section className="visual-passage-blocks">
 				<div className="section-heading">
-					<h3>Blocks</h3>
+					<h3>{t('dialogs.passageEdit.visual.structureTitle')}</h3>
 				</div>
 				<BlockList
 					blocks={content.blocks}

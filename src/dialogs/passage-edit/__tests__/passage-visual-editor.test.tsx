@@ -2,6 +2,7 @@ import {act, fireEvent, render, screen, within} from '@testing-library/react';
 import type {TFunction} from 'i18next';
 import * as React from 'react';
 import {
+	createBackpackSystem,
 	Story,
 	useStoriesContext,
 	VisualBinaryOperator,
@@ -180,7 +181,9 @@ describe('<PassageVisualEditor>', () => {
 		expect(passageTags()).toContain('noreturn');
 
 		// Delete the block (the compact shell exposes the delete button).
-		fireEvent.click(screen.getByLabelText('Delete block'));
+		fireEvent.click(
+			screen.getByLabelText('dialogs.passageEdit.visual.deleteBlock')
+		);
 
 		expect(passageTags()).not.toContain('noreturn');
 	});
@@ -595,8 +598,8 @@ describe('<PassageVisualEditor>', () => {
 			'dialogs.passageEdit.visual.addCondition'
 		);
 		expect(addConditionButtons.length).toBeGreaterThan(0);
-		expect(
-			screen.getAllByText('dialogs.passageEdit.visual.else')
+			expect(
+				screen.getAllByText('dialogs.passageEdit.visual.otherwise')
 		).toHaveLength(1);
 		expect(
 			screen.getByTestId(`passage-${story.passages[0].id}`)
@@ -900,6 +903,90 @@ describe('<PassageVisualEditor>', () => {
 			screen.queryByText('dialogs.passageEdit.visual.storyInitPreview')
 		).not.toBeInTheDocument();
 		expect(container.querySelector('.story-init-preview')).toBeNull();
+	});
+});
+
+describe('phase 10B visual structure', () => {
+	it('visually groups adjacent choices and breaks the group at another block', () => {
+		const {container} = renderComponent(story => {
+			const target = story.passages[1].id;
+			story.passages[0].visual = {
+				blocks: [
+					{actions: [], id: 'c1', kind: 'choice', label: 'A', targetPassageId: target},
+					{actions: [], id: 'c2', kind: 'choice', label: 'B', targetPassageId: target},
+					{id: 'text-between', kind: 'text', text: 'Break'},
+					{actions: [], id: 'c3', kind: 'choice', label: 'C', targetPassageId: target}
+				],
+				version: 2
+			};
+		});
+
+		expect(container.querySelectorAll('.choice-group-heading')).toHaveLength(2);
+		expect(container.querySelectorAll('.is-choice-group-start')).toHaveLength(2);
+		expect(container.querySelectorAll('.is-choice-group-end')).toHaveLength(2);
+		expect(container.querySelectorAll('.block-kind-choice')).toHaveLength(3);
+	});
+
+	it('repairs a partial time system from its story-level status card', () => {
+		const {container} = renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 1, id: 'day', name: 'day', type: 'number'},
+					{defaultValue: 0, id: 'period', name: 'period', type: 'number'}
+				],
+				version: 1
+			};
+		});
+		const timeCard = container.querySelector('.system-card.system-time') as HTMLElement;
+
+		expect(timeCard).toHaveClass('is-incomplete');
+		fireEvent.click(
+			within(timeCard).getByText('dialogs.passageEdit.visual.repairSystem')
+		);
+		expect(container.querySelector('.system-card.system-time')).toHaveClass(
+			'is-ready'
+		);
+	});
+
+	it('adds a requested item quantity and derives a grouped summary', () => {
+		const {story} = renderComponent(setup => {
+			setup.visual = {
+				states: [{defaultValue: [], id: 'bp', name: 'backpack', type: 'list'}],
+				version: 1
+			};
+			setup.passages[0].visual = {
+				blocks: [
+					{
+						actions: [],
+						id: 'choice-quantity',
+						kind: 'choice',
+						label: 'Gather',
+						targetPassageId: setup.passages[1].id
+					}
+				],
+				version: 2
+			};
+			Object.assign(setup, createBackpackSystem([setup], setup).props);
+		});
+
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemAction'),
+			{target: {value: 'obtain'}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemName'),
+			{target: {value: '药草'}}
+		);
+		fireEvent.change(
+			screen.getByLabelText('dialogs.passageEdit.visual.itemQuantity'),
+			{target: {value: '2'}}
+		);
+		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.addItemAction'));
+
+		const generated = screen.getByTestId(`passage-${story.passages[0].id}`)
+			.textContent ?? '';
+		expect(generated.match(/\$backpack\.push\("药草"\)/g)).toHaveLength(2);
+		expect(screen.getByText(/itemSentenceObtain × 2/)).toBeInTheDocument();
 	});
 });
 
@@ -1738,7 +1825,7 @@ describe('human-readable conditions and actions', () => {
 		expect(passageText()).toHaveTextContent('setup.time.advance(1)');
 	});
 
-	it('adds an advance-time action when no story states exist', () => {
+	it('does not create an advance-time action without its system', () => {
 		const {story} = renderComponent(setup => {
 			setup.visual = {states: [], version: 1};
 			setup.passages[1].name = 'Hallway';
@@ -1758,19 +1845,17 @@ describe('human-readable conditions and actions', () => {
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
-		// The add-action button used to require a state; the time-system
-		// action makes it usable with an empty state list.
 		const addAction = screen.getByText(
 			'dialogs.passageEdit.visual.addAction'
 		);
 
-		expect(addAction).not.toBeDisabled();
+		expect(addAction).toBeDisabled();
 		fireEvent.click(addAction);
 
-		expect(passageText()).toHaveTextContent('setup.time.advance(1)');
+		expect(passageText()).not.toHaveTextContent('setup.time.advance(1)');
 		expect(
-			screen.getByLabelText('dialogs.passageEdit.visual.actionSteps')
-		).toHaveValue(1);
+			screen.queryByLabelText('dialogs.passageEdit.visual.actionSteps')
+		).not.toBeInTheDocument();
 	});
 
 	it('adds an obtain-item action through the item template', () => {
@@ -1794,6 +1879,10 @@ describe('human-readable conditions and actions', () => {
 				],
 				version: 2
 			};
+			Object.assign(
+				setup,
+				createBackpackSystem([setup], setup).props
+			);
 		});
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);
@@ -1838,6 +1927,10 @@ describe('human-readable conditions and actions', () => {
 				],
 				version: 2
 			};
+			Object.assign(
+				setup,
+				createBackpackSystem([setup], setup).props
+			);
 		});
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);

@@ -141,7 +141,7 @@ describe('createBackpackSystem', () => {
 		});
 		const {passages, visual} = applyAction(story);
 
-		expect(storyHasBackpackSystem(story)).toBe(true);
+		expect(storyHasBackpackSystem(story)).toBe(false);
 		expect(visual.states).toHaveLength(1);
 		expect(passages.filter(p => p.name === BACKPACK_PASSAGE_NAME)).toHaveLength(
 			1
@@ -149,6 +149,7 @@ describe('createBackpackSystem', () => {
 		expect(
 			passages.find(p => p.name === BACKPACK_PASSAGE_NAME)!.text
 		).toBe('custom backpack text');
+		expect(storyHasBackpackSystem({...story, passages, visual})).toBe(true);
 	});
 
 	it('recompiles existing visual passages against the new state', () => {

@@ -1,6 +1,10 @@
 import {v4 as uuid} from '@lukeed/uuid';
 import {rectsIntersect} from '../../../util/geometry';
-import {compileVisualPassage, emptyVisualPassage} from '../../../util/visual-passage';
+import {
+	compileStateInitialization,
+	compileVisualPassage,
+	emptyVisualPassage
+} from '../../../util/visual-passage';
 import {passageDefaults} from '../defaults';
 import {Passage, Story, UpdateStoryAction} from '../stories.types';
 import {updateStory} from './update-story';
@@ -64,17 +68,49 @@ function freePlacement(
 	return bounds;
 }
 
-/**
- * True when the story already owns the two time-system states, so re-creating
- * the system would duplicate them.
- */
-export function storyHasTimeSystem(story: Story) {
-	const states = story.visual?.states ?? [];
+export interface TimeSystemStatus {
+	caption: boolean;
+	dayState: boolean;
+	engine: boolean;
+	initialization: boolean;
+	periodState: boolean;
+	state: 'missing' | 'incomplete' | 'ready';
+}
 
-	return (
-		states.some(state => state.name === 'day') &&
-		states.some(state => state.name === 'period')
+/** Returns the complete, author-visible installation state of the time system. */
+export function timeSystemStatus(story: Story): TimeSystemStatus {
+	const states = story.visual?.states ?? [];
+	const dayState = states.some(
+		state => state.name === 'day' && state.type === 'number'
 	);
+	const periodState = states.some(
+		state => state.name === 'period' && state.type === 'number'
+	);
+	const engine =
+		story.script.includes(TIME_SYSTEM_MARKER) &&
+		story.script.includes('setup.time =');
+	const caption = story.passages.some(passage => passage.name === 'StoryCaption');
+	const init = story.passages.find(passage => passage.name === 'StoryInit');
+	const initialization = Boolean(
+		init?.text.includes('<<if ndef $day>>') &&
+			init.text.includes('<<if ndef $period>>')
+	);
+	const ready = dayState && periodState && engine && caption && initialization;
+	const installed = dayState || periodState || engine || caption;
+
+	return {
+		caption,
+		dayState,
+		engine,
+		initialization,
+		periodState,
+		state: ready ? 'ready' : installed ? 'incomplete' : 'missing'
+	};
+}
+
+/** True only when every runtime artifact required by the time system exists. */
+export function storyHasTimeSystem(story: Story) {
+	return timeSystemStatus(story).state === 'ready';
 }
 
 /**
@@ -100,7 +136,7 @@ export function createTimeSystem(
 		states.push({defaultValue: 0, id: uuid(), name: 'period', type: 'number'});
 	}
 
-	const passages = [...story.passages];
+	const passages = story.passages.map(passage => ({...passage}));
 
 	if (!passages.some(passage => passage.name === 'StoryInit')) {
 		passages.push({
@@ -125,6 +161,19 @@ export function createTimeSystem(
 				version: 2
 			}
 		});
+	}
+
+	// A hand-written StoryInit cannot be recompiled from visual metadata. Keep
+	// its source and append guarded state initialization when repairing a
+	// partial installation.
+	const storyInit = passages.find(passage => passage.name === 'StoryInit');
+
+	if (
+		storyInit &&
+		!storyInit.visual &&
+		(!storyInit.text.includes('$day') || !storyInit.text.includes('$period'))
+	) {
+		storyInit.text = `${storyInit.text.trim()}\n\n${compileStateInitialization(states)}`.trim();
 	}
 
 	const script = story.script.includes(TIME_SYSTEM_MARKER)

@@ -1,6 +1,7 @@
 import {v4 as uuid} from '@lukeed/uuid';
 import {rectsIntersect} from '../../../util/geometry';
 import {
+	compileStateInitialization,
 	compileVisualPassage,
 	emptyVisualPassage,
 	migrateVisualContent
@@ -48,11 +49,46 @@ function freePlacement(
 	return bounds;
 }
 
-/** True when the story already owns the backpack state. */
-export function storyHasBackpackSystem(story: Story) {
-	return (story.visual?.states ?? []).some(
-		state => state.name === BACKPACK_STATE_NAME
+export interface BackpackSystemStatus {
+	initialization: boolean;
+	menu: boolean;
+	passage: boolean;
+	state: 'missing' | 'incomplete' | 'ready';
+	stateVariable: boolean;
+}
+
+/** Returns the complete, author-visible installation state of the backpack. */
+export function backpackSystemStatus(story: Story): BackpackSystemStatus {
+	const stateVariable = (story.visual?.states ?? []).some(
+		state => state.name === BACKPACK_STATE_NAME && state.type === 'list'
 	);
+	const init = story.passages.find(passage => passage.name === 'StoryInit');
+	const initialization = Boolean(
+		init?.text.includes(`<<if ndef $${BACKPACK_STATE_NAME}>>`)
+	);
+	const passage = story.passages.some(
+		item => item.name === BACKPACK_PASSAGE_NAME
+	);
+	const menu = Boolean(
+		story.passages
+			.find(item => item.name === 'StoryMenu')
+			?.text.includes(BACKPACK_MENU_LINK)
+	);
+	const ready = stateVariable && initialization && passage && menu;
+	const installed = stateVariable || initialization || passage || menu;
+
+	return {
+		initialization,
+		menu,
+		passage,
+		state: ready ? 'ready' : installed ? 'incomplete' : 'missing',
+		stateVariable
+	};
+}
+
+/** True only when every runtime artifact required by the backpack exists. */
+export function storyHasBackpackSystem(story: Story) {
+	return backpackSystemStatus(story).state === 'ready';
 }
 
 /** The visual blocks of the「背包」passage: a heading and one row per item. */
@@ -108,7 +144,7 @@ export function createBackpackSystem(
 		});
 	}
 
-	const passages = [...story.passages];
+	const passages = story.passages.map(passage => ({...passage}));
 
 	if (!passages.some(passage => passage.name === 'StoryInit')) {
 		passages.push({
@@ -130,6 +166,16 @@ export function createBackpackSystem(
 			story: story.id,
 			visual: backpackPassageBlocks(backpackStateId)
 		});
+	}
+
+	const storyInit = passages.find(passage => passage.name === 'StoryInit');
+
+	if (
+		storyInit &&
+		!storyInit.visual &&
+		!storyInit.text.includes(`$${BACKPACK_STATE_NAME}`)
+	) {
+		storyInit.text = `${storyInit.text.trim()}\n\n${compileStateInitialization(states)}`.trim();
 	}
 
 	// Install the menu entry: create StoryMenu when missing, otherwise append

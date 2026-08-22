@@ -110,7 +110,7 @@ describe('createTimeSystem', () => {
 		).toBe(passages.find(p => p.id === story.passages[0].id)!.text);
 	});
 
-	it('leaves an existing StoryInit and StoryCaption alone', () => {
+	it('keeps custom StoryInit source and appends guarded initialization', () => {
 		const story = fakeStory(1);
 
 		story.passages.push({
@@ -126,7 +126,10 @@ describe('createTimeSystem', () => {
 		const {passages} = applyAction(story);
 
 		expect(passages.filter(p => p.name === 'StoryInit')).toHaveLength(1);
-		expect(passages.find(p => p.name === 'StoryInit')!.text).toBe('custom init');
+		expect(passages.find(p => p.name === 'StoryInit')!.text).toContain('custom init');
+		expect(passages.find(p => p.name === 'StoryInit')!.text).toContain(
+			'<<if ndef $day>>'
+		);
 	});
 
 	it('does not recreate states when the system already exists', () => {
@@ -139,8 +142,12 @@ describe('createTimeSystem', () => {
 			],
 			version: 1
 		};
-		expect(storyHasTimeSystem(story)).toBe(true);
-		expect(applyAction(story).visual.states).toHaveLength(2);
+		expect(storyHasTimeSystem(story)).toBe(false);
+		const result = applyAction(story);
+		expect(result.visual.states).toHaveLength(2);
+		expect(
+			storyHasTimeSystem({...story, ...result})
+		).toBe(true);
 	});
 
 	it('reports when the time-system states are missing', () => {

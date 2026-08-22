@@ -49,6 +49,15 @@ describe('analyzeExpression', () => {
 		).toEqual({variableIds: ['tr1'], unknown: false});
 	});
 
+	it('collects the list state read by a count expression', () => {
+		expect(
+			analyzeExpression(
+				{kind: 'count', value: 'herb', variableId: 'inv'},
+				states
+			)
+		).toEqual({variableIds: ['inv'], unknown: false});
+	});
+
 	it('analyzes free expressions with $name reads', () => {
 		// $Trust_1 matches the 'Trust 1' state via its sanitized name.
 		expect(

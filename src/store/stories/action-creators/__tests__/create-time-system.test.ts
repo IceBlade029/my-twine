@@ -62,6 +62,17 @@ describe('createTimeSystem', () => {
 		expect(TIME_SYSTEM_ENGINE).toContain(TIME_SYSTEM_MARKER);
 	});
 
+	it('advances across midnight with the real installed engine', () => {
+		const setup: {time?: {advance: (count: number) => void; current: () => string}} = {};
+		const State = {variables: {day: 1, period: 5}};
+
+		new Function('setup', 'State', TIME_SYSTEM_ENGINE)(setup, State);
+		setup.time!.advance(2);
+
+		expect(State.variables).toEqual({day: 2, period: 1});
+		expect(setup.time!.current()).toBe('上午');
+	});
+
 	it('appends the engine after existing story JavaScript', () => {
 		const story = fakeStory(1);
 

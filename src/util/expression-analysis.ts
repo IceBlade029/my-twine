@@ -18,6 +18,9 @@ function walkStructured(
 		case 'variable':
 			output.push(expr.variableId);
 			return true;
+		case 'count':
+			output.push(expr.variableId);
+			return true;
 		case 'unary':
 			return walkStructured(expr.operand, output);
 		case 'binary':

@@ -1,6 +1,11 @@
 import * as React from 'react';
 import {useTranslation} from 'react-i18next';
-import {Passage, Story, VisualStoryState} from '../../store/stories';
+import {
+	BACKPACK_STATE_NAME,
+	Passage,
+	Story,
+	VisualStoryState
+} from '../../store/stories';
 import {formatWithNameAndVersion, useStoryFormatsContext} from '../../store/story-formats';
 import {sanitizeVariableName} from '../../util/visual-passage';
 import {buildTestHtml} from '../../util/test-run';
@@ -47,6 +52,101 @@ export interface PassageVisualRunDrawerProps {
 	blockLabelMap: TraceBlockIdMap;
 	compiledSource: string;
 }
+
+export interface ListQuantityChange {
+	after: number;
+	before: number;
+	item: string;
+}
+
+/** Converts duplicate-item lists into stable per-item quantity changes. */
+export function listQuantityChanges(
+	before: string[],
+	after: string[]
+): ListQuantityChange[] {
+	const beforeCounts = new Map<string, number>();
+	const afterCounts = new Map<string, number>();
+
+	before.forEach(item => beforeCounts.set(item, (beforeCounts.get(item) ?? 0) + 1));
+	after.forEach(item => afterCounts.set(item, (afterCounts.get(item) ?? 0) + 1));
+
+	return [...new Set([...beforeCounts.keys(), ...afterCounts.keys()])]
+		.map(item => ({
+			after: afterCounts.get(item) ?? 0,
+			before: beforeCounts.get(item) ?? 0,
+			item
+		}))
+		.filter(change => change.before !== change.after);
+}
+
+interface RuntimeDomainChangesProps {
+	result: RunResult;
+	states: VisualStoryState[];
+}
+
+const RuntimeDomainChanges: React.FC<RuntimeDomainChangesProps> = props => {
+	const {result, states} = props;
+	const {t} = useTranslation();
+	const day = states.find(state => state.name === 'day');
+	const period = states.find(state => state.name === 'period');
+	const backpack = states.find(state => state.name === BACKPACK_STATE_NAME);
+	const dayName = day ? variableNameFor(day.name) : undefined;
+	const periodName = period ? variableNameFor(period.name) : undefined;
+	const backpackName = backpack ? variableNameFor(backpack.name) : undefined;
+	const beforeDay = dayName ? result.before[dayName] : undefined;
+	const afterDay = dayName ? result.after[dayName] : undefined;
+	const beforePeriod = periodName ? result.before[periodName] : undefined;
+	const afterPeriod = periodName ? result.after[periodName] : undefined;
+	const beforeItems = backpackName ? result.before[backpackName] : undefined;
+	const afterItems = backpackName ? result.after[backpackName] : undefined;
+	const timeChanged =
+		typeof beforeDay === 'number' &&
+		typeof afterDay === 'number' &&
+		typeof beforePeriod === 'number' &&
+		typeof afterPeriod === 'number' &&
+		(beforeDay !== afterDay || beforePeriod !== afterPeriod);
+	const itemChanges =
+		Array.isArray(beforeItems) && Array.isArray(afterItems)
+			? listQuantityChanges(beforeItems, afterItems)
+			: [];
+
+	if (!timeChanged && itemChanges.length === 0) {
+		return null;
+	}
+
+	function timeText(day: number, period: number) {
+		return t('dialogs.passageEdit.visual.runtimeTimeMoment', {
+			day,
+			period: t(`dialogs.passageEdit.visual.timePeriods.${period}`)
+		});
+	}
+
+	return (
+		<div className="run-domain-changes">
+			{timeChanged && (
+				<article className="run-domain-change run-domain-time">
+					<strong>{t('dialogs.passageEdit.visual.runtimeTimeChange')}</strong>
+					<span>
+						{timeText(beforeDay as number, beforePeriod as number)} →{' '}
+						{timeText(afterDay as number, afterPeriod as number)}
+					</span>
+				</article>
+			)}
+			{itemChanges.length > 0 && (
+				<article className="run-domain-change run-domain-backpack">
+					<strong>{t('dialogs.passageEdit.visual.runtimeBackpackChange')}</strong>
+					<div className="run-quantity-list">
+						{itemChanges.map(change => (
+							<span key={change.item}>
+								{change.item}: {change.before} → {change.after}
+							</span>
+						))}
+					</div>
+				</article>
+			)}
+		</div>
+	);
+};
 
 /**
  * The 运行检查 drawer. It keeps the same type-aware value editors as the old
@@ -200,6 +300,9 @@ export const PassageVisualRunDrawer: React.FC<
 
 			{tab === 'state' && (
 				<div className="run-state">
+					{result && (
+						<RuntimeDomainChanges result={result} states={states} />
+					)}
 					{states.length === 0 && (
 						<p className="empty-state">
 							{t('dialogs.passageEdit.visual.noStatesHint')}

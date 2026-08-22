@@ -50,6 +50,45 @@
 	gap: var(--grid-size);
 }
 
+.run-domain-changes {
+	display: grid;
+	gap: var(--grid-size);
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.run-domain-change {
+	background: var(--background);
+	border: 1px solid var(--light-gray);
+	border-left: 3px solid var(--visual-tone-state, var(--accent));
+	border-radius: var(--corner-round);
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--grid-size) / 2);
+	padding: var(--grid-size);
+}
+
+.run-domain-time {
+	border-left-color: var(--visual-tone-time, var(--accent));
+}
+
+.run-domain-change > span,
+.run-quantity-list {
+	color: var(--gray);
+	font-size: 0.85em;
+}
+
+.run-quantity-list {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--grid-size) / 3);
+}
+
+@container passage-editor (max-width: 28rem) {
+	.run-domain-changes {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
 .run-state-row .simulator-state {
 	align-items: baseline;
 	display: flex;

@@ -4151,6 +4151,382 @@ interface StorySystemsOverviewProps {
 	story: Story;
 }
 
+export interface PassageDependencyAnalysis {
+	backpackActionCount: number;
+	backpackExpressionCount: number;
+	passageIds: string[];
+	rawBlockCount: number;
+	stateIds: string[];
+	timeActionCount: number;
+	unknownExpressionCount: number;
+}
+
+/**
+ * Derives the references owned by a block tree. This is deliberately a view
+ * projection: no dependency summary is persisted beside the real blocks.
+ */
+export function analyzePassageDependencies(
+	blocks: VisualBlock[],
+	states: VisualStoryState[]
+): PassageDependencyAnalysis {
+	const passageIds = new Set<string>();
+	const stateIds = new Set<string>();
+	const backpackStateId = states.find(
+		state => state.name === BACKPACK_STATE_NAME
+	)?.id;
+	let backpackActionCount = 0;
+	let backpackExpressionCount = 0;
+	let rawBlockCount = 0;
+	let timeActionCount = 0;
+	let unknownExpressionCount = 0;
+
+	function readExpression(expression?: VisualExpression) {
+		if (!expression) {
+			return;
+		}
+
+		const analysis = analyzeExpression(expression, states);
+
+		analysis.variableIds.forEach(id => stateIds.add(id));
+		if (backpackStateId && analysis.variableIds.includes(backpackStateId)) {
+			backpackExpressionCount++;
+		}
+		if (analysis.unknown) {
+			unknownExpressionCount++;
+		}
+	}
+
+	function visitBlock(block: VisualBlock) {
+		if ('condition' in block) {
+			readExpression(block.condition);
+		}
+
+		switch (block.kind) {
+			case 'choice':
+				if (!block.specialTarget && block.targetPassageId !== '') {
+					passageIds.add(block.targetPassageId);
+				}
+				block.actions.forEach(action => {
+					if (action.operation === 'advanceTime') {
+						timeActionCount++;
+						return;
+					}
+
+					if (action.stateId !== '') {
+						stateIds.add(action.stateId);
+					}
+					if (
+						backpackStateId === action.stateId &&
+						(action.operation === 'push' || action.operation === 'remove')
+					) {
+						backpackActionCount++;
+					}
+				});
+				break;
+			case 'variable':
+				if (block.source !== 'loopItem' && block.stateId) {
+					stateIds.add(block.stateId);
+				}
+				break;
+			case 'set':
+				if (block.variableId !== '') {
+					stateIds.add(block.variableId);
+				}
+				readExpression(block.value);
+				break;
+			case 'include':
+				if (block.targetPassageId !== '') {
+					passageIds.add(block.targetPassageId);
+				}
+				break;
+			case 'branch':
+				block.branches.forEach(branch => {
+					readExpression(branch.condition);
+					branch.blocks.forEach(visitBlock);
+				});
+				break;
+			case 'switch':
+				if (block.stateId !== '') {
+					stateIds.add(block.stateId);
+				}
+				block.cases.forEach(item => item.blocks.forEach(visitBlock));
+				block.defaultBlocks.forEach(visitBlock);
+				break;
+			case 'loop':
+				if (block.stateId !== '') {
+					stateIds.add(block.stateId);
+				}
+				block.blocks.forEach(visitBlock);
+				break;
+			case 'raw':
+				rawBlockCount++;
+				break;
+			case 'text':
+			case 'interaction':
+			case 'returnMain':
+				break;
+		}
+	}
+
+	blocks.forEach(visitBlock);
+
+	return {
+		backpackActionCount,
+		backpackExpressionCount,
+		passageIds: [...passageIds],
+		rawBlockCount,
+		stateIds: [...stateIds],
+		timeActionCount,
+		unknownExpressionCount
+	};
+}
+
+function storyDomainUsage(story: Story) {
+	return story.passages.reduce(
+		(total, passage) => {
+			if (!passage.visual) {
+				return total;
+			}
+
+			const analysis = analyzePassageDependencies(
+				migrateVisualContent(passage.visual).blocks,
+				story.visual?.states ?? []
+			);
+
+			return {
+				backpack:
+					total.backpack +
+					analysis.backpackActionCount +
+					analysis.backpackExpressionCount,
+				time: total.time + analysis.timeActionCount
+			};
+		},
+		{backpack: 0, time: 0}
+	);
+}
+
+interface PassageDependenciesProps {
+	blocks: VisualBlock[];
+	disabled?: boolean;
+	passage: Passage;
+	story: Story;
+}
+
+const PassageDependencies: React.FC<PassageDependenciesProps> = props => {
+	const {blocks, disabled, passage, story} = props;
+	const {dispatch, stories} = useUndoableStoriesContext();
+	const {t} = useTranslation();
+	const states = story.visual?.states ?? [];
+	const analysis = React.useMemo(
+		() => analyzePassageDependencies(blocks, states),
+		[blocks, states]
+	);
+	const referencedBy = React.useMemo(
+		() =>
+			story.passages.filter(candidate => {
+				if (candidate.id === passage.id || !candidate.visual) {
+					return false;
+				}
+
+				return analyzePassageDependencies(
+					migrateVisualContent(candidate.visual).blocks,
+					states
+				).passageIds.includes(passage.id);
+			}),
+		[passage.id, states, story.passages]
+	);
+	const time = timeSystemStatus(story);
+	const backpack = backpackSystemStatus(story);
+	const hasTime = analysis.timeActionCount > 0;
+	const hasBackpack =
+		analysis.backpackActionCount + analysis.backpackExpressionCount > 0;
+	const total =
+		analysis.passageIds.length +
+		referencedBy.length +
+		analysis.stateIds.length +
+		Number(hasTime) +
+		Number(hasBackpack) +
+		analysis.rawBlockCount +
+		analysis.unknownExpressionCount;
+
+	function locatePassage(id: string) {
+		if (story.passages.some(passage => passage.id === id)) {
+			dispatch(highlightPassages(story, [id]));
+		}
+	}
+
+	function systemAction(
+		kind: 'time' | 'backpack',
+		ready: boolean
+	) {
+		if (ready) {
+			const name = kind === 'time' ? 'StoryCaption' : '背包';
+			const passage = story.passages.find(item => item.name === name);
+
+			if (passage) {
+				locatePassage(passage.id);
+			}
+			return;
+		}
+
+		dispatch(
+			kind === 'time'
+				? createTimeSystem(stories, story)
+				: createBackpackSystem(stories, story),
+			kind === 'time'
+				? 'undoChange.createTimeSystem'
+				: 'undoChange.createBackpackSystem'
+		);
+	}
+
+	function artifact(label: string, ready: boolean) {
+		return (
+			<span
+				className={`dependency-artifact${ready ? ' is-ready' : ' is-missing'}`}
+				key={label}
+			>
+				{ready ? <IconCheck /> : <IconAlertTriangle />}
+				{label}
+			</span>
+		);
+	}
+
+	return (
+		<section className="passage-dependencies">
+			<div className="section-heading dependency-heading">
+				<h3>{t('dialogs.passageEdit.visual.dependenciesTitle')}</h3>
+				<span>{t('dialogs.passageEdit.visual.dependenciesCount', {count: total})}</span>
+			</div>
+			{total === 0 ? (
+				<p className="empty-state">
+					{t('dialogs.passageEdit.visual.noDependencies')}
+				</p>
+			) : (
+				<div className="dependency-list">
+					{referencedBy.map(source => (
+						<article className="dependency-row" key={`referenced-by-${source.id}`}>
+							<IconFileImport />
+							<div>
+								<strong>{source.name}</strong>
+								<span>{t('dialogs.passageEdit.visual.dependencyReferencedBy')}</span>
+							</div>
+							<button disabled={disabled} onClick={() => locatePassage(source.id)} type="button">
+								{t('dialogs.passageEdit.visual.locateSystem')}
+							</button>
+						</article>
+					))}
+					{analysis.passageIds.map(id => {
+						const target = story.passages.find(passage => passage.id === id);
+
+						return (
+							<article className="dependency-row" key={`passage-${id}`}>
+								<IconFileImport />
+								<div>
+									<strong>{target?.name ?? id.slice(0, 8)}</strong>
+									<span>{t('dialogs.passageEdit.visual.dependencyPassage')}</span>
+								</div>
+								{target ? (
+									<button disabled={disabled} onClick={() => locatePassage(id)} type="button">
+										{t('dialogs.passageEdit.visual.locateSystem')}
+									</button>
+								) : (
+									<span className="dependency-error">
+										{t('dialogs.passageEdit.visual.dependencyMissing')}
+									</span>
+								)}
+							</article>
+						);
+					})}
+					{analysis.stateIds.map(id => {
+						const state = states.find(item => item.id === id);
+
+						return (
+							<article className="dependency-row" key={`state-${id}`}>
+								<IconVariable />
+								<div>
+									<strong>{state?.name ?? id.slice(0, 8)}</strong>
+									<span>{t('dialogs.passageEdit.visual.dependencyState', {type: state?.type ?? '?'})}</span>
+								</div>
+								<span className={state ? 'dependency-ok' : 'dependency-error'}>
+									{t(
+										state
+											? 'dialogs.passageEdit.visual.dependencyAvailable'
+											: 'dialogs.passageEdit.visual.dependencyMissing'
+									)}
+								</span>
+							</article>
+						);
+					})}
+					{hasTime && (
+						<article className={`dependency-row dependency-system dependency-time is-${time.state}`}>
+							<IconClock />
+							<div>
+								<strong>{t('dialogs.passageEdit.visual.timeSystem')}</strong>
+								<span>{t('dialogs.passageEdit.visual.timeDependencyUsage', {count: analysis.timeActionCount})}</span>
+								<div className="dependency-artifacts">
+									{artifact('day', time.dayState)}
+									{artifact('period', time.periodState)}
+									{artifact('StoryInit', time.initialization)}
+									{artifact('StoryCaption', time.caption)}
+									{artifact(t('dialogs.passageEdit.visual.timeEngine'), time.engine)}
+								</div>
+							</div>
+							<button disabled={disabled} onClick={() => systemAction('time', time.state === 'ready')} type="button">
+								{t(
+									time.state === 'ready'
+										? 'dialogs.passageEdit.visual.locateSystem'
+										: time.state === 'missing'
+											? 'dialogs.passageEdit.visual.createSystem'
+											: 'dialogs.passageEdit.visual.repairSystem'
+								)}
+							</button>
+						</article>
+					)}
+					{hasBackpack && (
+						<article className={`dependency-row dependency-system dependency-backpack is-${backpack.state}`}>
+							<IconBackpack />
+							<div>
+								<strong>{t('dialogs.passageEdit.visual.backpackSystem')}</strong>
+								<span>{t('dialogs.passageEdit.visual.backpackDependencyUsage', {
+									actions: analysis.backpackActionCount,
+									conditions: analysis.backpackExpressionCount
+								})}</span>
+								<div className="dependency-artifacts">
+									{artifact('backpack', backpack.stateVariable)}
+									{artifact('StoryInit', backpack.initialization)}
+									{artifact(t('dialogs.passageEdit.visual.backpackPassage'), backpack.passage)}
+									{artifact('StoryMenu', backpack.menu)}
+								</div>
+							</div>
+							<button disabled={disabled} onClick={() => systemAction('backpack', backpack.state === 'ready')} type="button">
+								{t(
+									backpack.state === 'ready'
+										? 'dialogs.passageEdit.visual.locateSystem'
+										: backpack.state === 'missing'
+											? 'dialogs.passageEdit.visual.createSystem'
+											: 'dialogs.passageEdit.visual.repairSystem'
+								)}
+							</button>
+						</article>
+					)}
+					{(analysis.rawBlockCount > 0 || analysis.unknownExpressionCount > 0) && (
+						<article className="dependency-row dependency-unknown">
+							<IconAlertTriangle />
+							<div>
+								<strong>{t('dialogs.passageEdit.visual.dependencyUnknown')}</strong>
+								<span>{t('dialogs.passageEdit.visual.dependencyUnknownDetail', {
+									expressions: analysis.unknownExpressionCount,
+									raw: analysis.rawBlockCount
+								})}</span>
+							</div>
+						</article>
+					)}
+				</div>
+			)}
+		</section>
+	);
+};
+
 /** Compact story-level status cards for the two installed domain systems. */
 const StorySystemsOverview: React.FC<StorySystemsOverviewProps> = props => {
 	const {disabled, story} = props;
@@ -4158,6 +4534,7 @@ const StorySystemsOverview: React.FC<StorySystemsOverviewProps> = props => {
 	const {t} = useTranslation();
 	const time = timeSystemStatus(story);
 	const backpack = backpackSystemStatus(story);
+	const usage = storyDomainUsage(story);
 
 	function statusLabel(status: 'missing' | 'incomplete' | 'ready') {
 		return t(`dialogs.passageEdit.visual.systemStatus.${status}`);
@@ -4190,6 +4567,9 @@ const StorySystemsOverview: React.FC<StorySystemsOverviewProps> = props => {
 						</div>
 						<span className="system-artifacts">
 							{t('dialogs.passageEdit.visual.timeSystemArtifacts')}
+						</span>
+						<span className="system-usage">
+							{t('dialogs.passageEdit.visual.systemUsageCount', {count: usage.time})}
 						</span>
 					</div>
 					{time.state === 'ready' ? (
@@ -4224,6 +4604,9 @@ const StorySystemsOverview: React.FC<StorySystemsOverviewProps> = props => {
 						</div>
 						<span className="system-artifacts">
 							{t('dialogs.passageEdit.visual.backpackSystemArtifacts')}
+						</span>
+						<span className="system-usage">
+							{t('dialogs.passageEdit.visual.systemUsageCount', {count: usage.backpack})}
 						</span>
 					</div>
 					{backpack.state === 'ready' ? (
@@ -4485,6 +4868,12 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 					treeView={treeView}
 				/>
 			</section>
+			<PassageDependencies
+				blocks={content.blocks}
+				disabled={disabled}
+				passage={passage}
+				story={story}
+			/>
 
 			<section className="generated-source">
 				<IconButton

@@ -24,11 +24,13 @@ import enUS from '../../../../public/locales/en-US.json';
 import zhCN from '../../../../public/locales/zh-CN.json';
 import {
 	actionSentenceText,
+	analyzePassageDependencies,
 	conditionSentenceText,
 	evaluateExpression,
 	hiddenBecauseText,
 	PassageVisualEditor
 } from '../passage-visual-editor';
+import {listQuantityChanges} from '../passage-visual-run-drawer';
 
 
 function cond(operator: VisualBinaryOperator, variableId: string, value: boolean | number | string) {
@@ -1293,6 +1295,145 @@ describe('phase 10C precise insertion and ordering', () => {
 				name: 'dialogs.passageEdit.visual.createSystem'
 			})
 		).toBeEnabled();
+	});
+});
+
+describe('phase 10D dependencies and runtime differences', () => {
+	it('derives nested passage, state, time, backpack, and opaque dependencies', () => {
+		const states: VisualStoryState[] = [
+			{defaultValue: [], id: 'bp', name: 'backpack', type: 'list'},
+			{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number'}
+		];
+		const analysis = analyzePassageDependencies(
+			[
+				{
+					branches: [
+						{
+							blocks: [
+								{
+									actions: [
+										{operation: 'advanceTime', stateId: '', value: 2},
+										{operation: 'remove', stateId: 'bp', value: '药草'}
+									],
+									condition: {
+										kind: 'binary',
+										left: {kind: 'count', value: '药草', variableId: 'bp'},
+										operator: '>=',
+										right: {kind: 'literal', value: 1}
+									},
+									id: 'choice',
+									kind: 'choice',
+									label: 'Craft',
+									targetPassageId: 'target'
+								},
+								{id: 'raw', kind: 'raw', sugar: '<<set $x = 1>>'}
+							],
+							condition: cond('>=', 'trust', 1),
+							id: 'yes'
+						},
+						{blocks: [], id: 'else'}
+					],
+					id: 'branch',
+					kind: 'branch'
+				}
+			],
+			states
+		);
+
+		expect(analysis).toMatchObject({
+			backpackActionCount: 1,
+			backpackExpressionCount: 1,
+			passageIds: ['target'],
+			rawBlockCount: 1,
+			stateIds: expect.arrayContaining(['bp', 'trust']),
+			timeActionCount: 1,
+			unknownExpressionCount: 0
+		});
+	});
+
+	it('renders actionable dependency rows from the current passage', () => {
+		const {container} = renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: [], id: 'bp', name: 'backpack', type: 'list'},
+					{defaultValue: 1, id: 'day', name: 'day', type: 'number'},
+					{defaultValue: 0, id: 'period', name: 'period', type: 'number'}
+				],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						actions: [
+							{operation: 'advanceTime', stateId: '', value: 1},
+							{operation: 'push', stateId: 'bp', value: '药草'}
+						],
+						condition: {
+							kind: 'binary',
+							left: {kind: 'count', value: '药草', variableId: 'bp'},
+							operator: '>=',
+							right: {kind: 'literal', value: 1}
+						},
+						id: 'choice',
+						kind: 'choice',
+						label: 'Go',
+						targetPassageId: story.passages[1].id
+					}
+				],
+				version: 2
+			};
+			story.passages[1].visual = {
+				blocks: [
+					{
+						id: 'back-reference',
+						kind: 'include',
+						targetPassageId: story.passages[0].id
+					}
+				],
+				version: 2
+			};
+		});
+		const view = container.querySelector('.passage-dependencies') as HTMLElement;
+
+		expect(within(view).getByText('dialogs.passageEdit.visual.dependenciesTitle')).toBeInTheDocument();
+		expect(within(view).getAllByText('Hallway')).toHaveLength(2);
+		expect(
+			within(view).getByText('dialogs.passageEdit.visual.dependencyReferencedBy')
+		).toBeInTheDocument();
+		expect(within(view).getAllByText('backpack').length).toBeGreaterThan(0);
+		expect(view.querySelector('.dependency-time')).toBeInTheDocument();
+		expect(view.querySelector('.dependency-backpack')).toBeInTheDocument();
+		expect(view.querySelectorAll('.dependency-artifact.is-missing').length).toBeGreaterThan(0);
+
+		fireEvent.click(
+			within(view.querySelector('.dependency-time') as HTMLElement).getByRole(
+				'button',
+				{name: 'dialogs.passageEdit.visual.repairSystem'}
+			)
+		);
+		expect(container.querySelector('.dependency-time')).toHaveClass('is-ready');
+
+		const updatedView = container.querySelector('.passage-dependencies') as HTMLElement;
+		fireEvent.click(
+			within(updatedView.querySelector('.dependency-backpack') as HTMLElement).getByRole(
+				'button',
+				{name: 'dialogs.passageEdit.visual.repairSystem'}
+			)
+		);
+		expect(container.querySelector('.dependency-backpack')).toHaveClass('is-ready');
+	});
+
+	it('turns duplicate backpack entries into per-item quantity changes', () => {
+		expect(
+			listQuantityChanges(
+				['药草', '药草', '木材'],
+				['药草', '药水', '药水']
+			)
+		).toEqual([
+			{after: 1, before: 2, item: '药草'},
+			{after: 0, before: 1, item: '木材'},
+			{after: 2, before: 0, item: '药水'}
+		]);
 	});
 });
 
@@ -2598,6 +2739,34 @@ describe('运行检查 runtime drawer (P3)', () => {
 		expect(
 			screen.getByRole('tab', {name: 'dialogs.passageEdit.visual.runTabSugar'})
 		).toBeInTheDocument();
+	});
+
+	it('shows domain-level time and backpack quantity changes', () => {
+		const {container} = renderComponent(story => {
+			story.visual = {
+				states: [
+					{defaultValue: 1, id: 'day', name: 'day', type: 'number'},
+					{defaultValue: 5, id: 'period', name: 'period', type: 'number'},
+					{defaultValue: ['药草', '药草'], id: 'bp', name: 'backpack', type: 'list'}
+				],
+				version: 1
+			};
+		});
+		const runner = captureMessageHandler();
+
+		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.runtimeDrawer'));
+		runner({
+			type: 'narrative-test-result',
+			before: {backpack: ['药草', '药草'], day: 1, period: 5},
+			after: {backpack: ['药草'], day: 2, period: 0},
+			html: '<p>done</p>',
+			trace: []
+		});
+
+		expect(container.querySelector('.run-domain-time')).toBeInTheDocument();
+		expect(container.querySelector('.run-domain-backpack')).toHaveTextContent(
+			'药草: 2 → 1'
+		);
 	});
 
 	it('clicking a trace entry highlights its block in the tree', () => {

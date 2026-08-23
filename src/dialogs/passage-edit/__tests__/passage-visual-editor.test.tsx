@@ -114,6 +114,32 @@ function addModule(labelKey: string) {
 	fireEvent.click(screen.getAllByText(labelKey)[0]);
 }
 
+function openConditionEditor(scope?: HTMLElement) {
+	const queries = scope ? within(scope) : screen;
+
+	fireEvent.click(
+		queries.getByText('dialogs.passageEdit.visual.editCondition')
+	);
+}
+
+function openActionCreator(scope?: HTMLElement) {
+	const queries = scope ? within(scope) : screen;
+
+	fireEvent.click(queries.getByText('dialogs.passageEdit.visual.addAction'));
+}
+
+function openActionEditor(index = 0) {
+	fireEvent.click(
+		within(document.querySelectorAll('.action-row')[index] as HTMLElement).getByText(
+			'dialogs.passageEdit.visual.editAction'
+		)
+	);
+}
+
+function openBranchFullEditor() {
+	fireEvent.click(screen.getByText('dialogs.passageEdit.visual.fullEdit'));
+}
+
 describe('<PassageVisualEditor>', () => {
 	it('commits body text as generated passage text on blur', () => {
 		const {story} = renderComponent();
@@ -766,6 +792,8 @@ describe('<PassageVisualEditor>', () => {
 			};
 		});
 
+		openConditionEditor();
+
 		// The condition editor exposes the state, operator symbols, and value.
 		const operator = screen.getByLabelText(
 			'dialogs.passageEdit.visual.conditionOperator'
@@ -793,6 +821,8 @@ describe('<PassageVisualEditor>', () => {
 				version: 2
 			};
 		});
+
+		openBranchFullEditor();
 
 		// Nested block lists increment the depth attribute.
 		const depths = [...container.querySelectorAll('.visual-block')].map(
@@ -916,6 +946,29 @@ describe('<PassageVisualEditor>', () => {
 });
 
 describe('phase 10B visual structure', () => {
+	it('shows branch structure overview before rendering the full nested editor', () => {
+		const {container} = renderComponent(story => {
+			story.passages[0].visual = {
+				blocks: [
+					{
+						branches: [
+							{blocks: [{id: 'nested', kind: 'text', text: 'Inside'}], id: 'match'},
+							{blocks: [], id: 'else'}
+						],
+						id: 'branch-overview',
+						kind: 'branch'
+					}
+				],
+				version: 2
+			};
+		});
+
+		expect(container.querySelectorAll('.branch-overview-path')).toHaveLength(2);
+		expect(container.querySelector('.visual-block[data-depth="1"]')).toBeNull();
+		openBranchFullEditor();
+		expect(container.querySelector('.visual-block[data-depth="1"]')).not.toBeNull();
+	});
+
 	it('keeps a branch path heading separate from its condition controls', () => {
 		const {container} = renderComponent(story => {
 			story.visual = {
@@ -938,6 +991,8 @@ describe('phase 10B visual structure', () => {
 				version: 2
 			};
 		});
+		openBranchFullEditor();
+		openConditionEditor();
 		const matchBranch = container.querySelector(
 			'.visual-passage-branch .branch'
 		);
@@ -1009,6 +1064,8 @@ describe('phase 10B visual structure', () => {
 			Object.assign(setup, createBackpackSystem([setup], setup).props);
 		});
 
+		openActionCreator();
+
 		fireEvent.change(
 			screen.getByLabelText('dialogs.passageEdit.visual.itemAction'),
 			{target: {value: 'obtain'}}
@@ -1026,7 +1083,9 @@ describe('phase 10B visual structure', () => {
 		const generated = screen.getByTestId(`passage-${story.passages[0].id}`)
 			.textContent ?? '';
 		expect(generated.match(/\$backpack\.push\("药草"\)/g)).toHaveLength(2);
-		expect(screen.getByText(/itemSentenceObtain × 2/)).toBeInTheDocument();
+		expect(
+			screen.getAllByText('dialogs.passageEdit.visual.itemSentenceObtain')
+		).toHaveLength(2);
 	});
 });
 
@@ -1205,6 +1264,7 @@ describe('phase 10C precise insertion and ordering', () => {
 				version: 2
 			};
 		});
+		openConditionEditor();
 		const rows = document.querySelectorAll('.condition-row');
 
 		fireEvent.click(
@@ -1252,11 +1312,23 @@ describe('phase 10C precise insertion and ordering', () => {
 			)
 		);
 
+		openActionEditor(0);
 		expect(
-			screen
-				.getAllByLabelText('dialogs.passageEdit.visual.actionOperation')
-				.map(input => (input as HTMLSelectElement).value)
-		).toEqual(['increase', 'set']);
+			(screen.getByLabelText(
+				'dialogs.passageEdit.visual.actionOperation'
+			) as HTMLSelectElement).value
+		).toBe('increase');
+		fireEvent.click(
+			within(actionRows[0] as HTMLElement).getByText(
+				'dialogs.passageEdit.visual.finishEditing'
+			)
+		);
+		openActionEditor(1);
+		expect(
+			(screen.getByLabelText(
+				'dialogs.passageEdit.visual.actionOperation'
+			) as HTMLSelectElement).value
+		).toBe('set');
 	});
 
 	it('offers inline system creation beside unavailable domain actions', () => {
@@ -1274,6 +1346,7 @@ describe('phase 10C precise insertion and ordering', () => {
 				version: 2
 			};
 		});
+		openActionCreator();
 		const prompts = container.querySelectorAll('.system-capability-prompt');
 
 		expect(prompts).toHaveLength(2);
@@ -1565,6 +1638,7 @@ describe('condition dual view (P2)', () => {
 
 	it('toggles builder/expression and round-trips the simple shape', () => {
 		renderConditioned();
+		openConditionEditor();
 
 		// Starts in builder mode with the three controls.
 		expect(
@@ -1594,6 +1668,19 @@ describe('condition dual view (P2)', () => {
 		).toBeInTheDocument();
 	});
 
+	it('keeps an existing condition compact until editing is requested', () => {
+		renderConditioned();
+
+		expect(document.querySelector('.condition-compact')).not.toBeNull();
+		expect(
+			screen.queryByLabelText('dialogs.passageEdit.visual.conditionState')
+		).not.toBeInTheDocument();
+		openConditionEditor();
+		expect(
+			screen.getByLabelText('dialogs.passageEdit.visual.conditionState')
+		).toBeInTheDocument();
+	});
+
 	it('shows a read-only note for a complex free expression', () => {
 		renderComponent(story => {
 			story.passages[0].visual = {
@@ -1611,6 +1698,7 @@ describe('condition dual view (P2)', () => {
 				version: 2
 			};
 		});
+		openConditionEditor();
 
 		// Advanced free expressions open in expression mode with the note.
 		expect(
@@ -1625,6 +1713,7 @@ describe('condition dual view (P2)', () => {
 
 	it('shows instant feedback under the editor', () => {
 		renderConditioned();
+		openConditionEditor();
 
 		// Default Trust is 0, so (Trust > 5) is false for the current test value.
 		expect(
@@ -1871,6 +1960,7 @@ describe('human-readable conditions and actions', () => {
 				version: 2
 			};
 		});
+		openConditionEditor();
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 		const operator = screen.getByLabelText(
@@ -1919,6 +2009,7 @@ describe('human-readable conditions and actions', () => {
 				version: 2
 			};
 		});
+		openConditionEditor();
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
@@ -2170,6 +2261,7 @@ describe('human-readable conditions and actions', () => {
 				version: 2
 			};
 		});
+		openConditionEditor();
 
 		const select = screen.getByLabelText(
 			'dialogs.passageEdit.visual.conditionOperator'
@@ -2214,6 +2306,7 @@ describe('human-readable conditions and actions', () => {
 				version: 2
 			};
 		});
+		openActionEditor();
 
 		const select = screen.getByLabelText(
 			'dialogs.passageEdit.visual.actionOperation'
@@ -2232,6 +2325,31 @@ describe('human-readable conditions and actions', () => {
 		expect(select).not.toHaveTextContent(
 			'dialogs.passageEdit.visual.operationIncrease'
 		);
+	});
+
+	it('keeps choice actions as one-line summaries until one is edited', () => {
+		renderComponent(story => {
+			story.visual = {
+				states: [{defaultValue: 0, id: 'trust', name: 'Trust', type: 'number'}],
+				version: 1
+			};
+			story.passages[0].visual = {
+				blocks: [
+					{
+						actions: [{operation: 'increase', stateId: 'trust', value: 1}],
+						id: 'choice-action-summary',
+						kind: 'choice',
+						label: 'Go',
+						targetPassageId: story.passages[1].id
+					}
+				],
+				version: 2
+			};
+		});
+
+		expect(document.querySelector('.action-row-fields')).toBeNull();
+		openActionEditor();
+		expect(document.querySelector('.action-row-fields')).not.toBeNull();
 	});
 
 	it('edits an advance-time action without needing any story state', () => {
@@ -2253,6 +2371,7 @@ describe('human-readable conditions and actions', () => {
 				version: 2
 			};
 		});
+		openActionEditor();
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
@@ -2308,12 +2427,10 @@ describe('human-readable conditions and actions', () => {
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
-		const addAction = screen.getByText(
-			'dialogs.passageEdit.visual.addAction'
-		);
-
-		expect(addAction).toBeDisabled();
-		fireEvent.click(addAction);
+		openActionCreator();
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.addTimeAction')
+		).toBeDisabled();
 
 		expect(passageText()).not.toHaveTextContent('setup.time.advance(1)');
 		expect(
@@ -2347,6 +2464,7 @@ describe('human-readable conditions and actions', () => {
 				createBackpackSystem([setup], setup).props
 			);
 		});
+		openActionCreator();
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
@@ -2395,6 +2513,7 @@ describe('human-readable conditions and actions', () => {
 				createBackpackSystem([setup], setup).props
 			);
 		});
+		openActionCreator();
 		const passageText = () =>
 			screen.getByTestId(`passage-${story.passages[0].id}`);
 
@@ -2433,6 +2552,7 @@ describe('human-readable conditions and actions', () => {
 				version: 2
 			};
 		});
+		openActionCreator();
 
 		expect(
 			screen.getByText('dialogs.passageEdit.visual.backpackMissingHint')
@@ -2568,7 +2688,7 @@ describe('simulator', () => {
 			};
 		});
 		const branches = () =>
-			container.querySelectorAll('.visual-passage-branch .branch');
+			container.querySelectorAll('.branch-overview-path');
 
 		fireEvent.click(screen.getByText('dialogs.passageEdit.visual.runtimeDrawer'));
 
@@ -2576,7 +2696,7 @@ describe('simulator', () => {
 		expect(branches()[0]).toHaveClass('is-inactive');
 		expect(branches()[1]).not.toHaveClass('is-inactive');
 		expect(
-			screen.getByText('dialogs.passageEdit.visual.statusNotHit')
+			screen.getByText('dialogs.passageEdit.visual.currentMatch')
 		).toBeInTheDocument();
 
 		// A matching value activates the first branch and dims the else branch.
@@ -2587,7 +2707,7 @@ describe('simulator', () => {
 		expect(branches()[0]).not.toHaveClass('is-inactive');
 		expect(branches()[1]).toHaveClass('is-inactive');
 		expect(
-			screen.getByText('dialogs.passageEdit.visual.statusNotHit')
+			screen.getByText('dialogs.passageEdit.visual.currentMatch')
 		).toBeInTheDocument();
 	});
 

@@ -845,45 +845,6 @@ export function actionSentenceText(
 	});
 }
 
-function groupedActionSentences(
-	t: TFunction,
-	actions: VisualStateAction[],
-	states: VisualStoryState[]
-) {
-	const rows: Array<{key: string; text: string}> = [];
-
-	actions.forEach((action, index) => {
-		const state = states.find(item => item.id === action.stateId);
-		const itemAction =
-			state?.name === BACKPACK_STATE_NAME &&
-			(action.operation === 'push' || action.operation === 'remove');
-		const previous = rows[rows.length - 1];
-		const previousAction = actions[index - 1];
-
-		if (
-			itemAction &&
-			previous &&
-			previousAction?.operation === action.operation &&
-			previousAction.stateId === action.stateId &&
-			previousAction.value === action.value
-		) {
-			const match = previous.text.match(/ × (\d+)$/);
-			const count = match ? Number(match[1]) + 1 : 2;
-			previous.text = `${actionSentenceText(t, action, states)} × ${count}`;
-			return;
-		}
-
-		rows.push({
-			key: `${index}-${action.operation}-${String(action.value)}`,
-			text: itemAction
-				? `${actionSentenceText(t, action, states)} × 1`
-				: actionSentenceText(t, action, states)
-		});
-	});
-
-	return rows;
-}
-
 /**
  * Returns the index of the branch that would run for the given simulated
  * values: the first branch whose condition evaluates true, or the
@@ -1251,6 +1212,7 @@ function ConditionEditor(props: {
 				? condition.code
 				: ''
 	);
+	const [editing, setEditing] = React.useState(false);
 
 	// When the stored expression arrives (or changes) into a non-simple shape,
 	// force the editor back to expression mode with its code.
@@ -1282,9 +1244,11 @@ function ConditionEditor(props: {
 		return (
 			<>
 				<button
+					className="condition-add-button"
 					disabled={states.length === 0}
 					onClick={() => {
 						const state = states[0];
+						setEditing(true);
 						onChange(
 							simpleCondition(
 								state.id,
@@ -1306,13 +1270,46 @@ function ConditionEditor(props: {
 		);
 	}
 
+	if (!editing) {
+		const analysis = analyzeExpression(condition, states);
+		const missingReference =
+			analysis.unknown ||
+			analysis.variableIds.some(
+				id => !states.some(state => state.id === id)
+			);
+
+		return (
+			<div className="condition-compact">
+				<span className="condition-compact-sentence">
+					{conditionSentenceText(t, condition, states)}
+				</span>
+				{rows && rows.length > 1 && (
+					<span className="condition-compact-count">
+						{t('dialogs.passageEdit.visual.conditionCount', {
+							count: rows.length
+						})}
+					</span>
+				)}
+				{missingReference && (
+					<span className="block-status-tag error-status">
+						{t('dialogs.passageEdit.visual.undefinedVariable')}
+					</span>
+				)}
+				<button onClick={() => setEditing(true)} type="button">
+					{t('dialogs.passageEdit.visual.editCondition')}
+				</button>
+			</div>
+		);
+	}
+
 	return (
 		<div className="condition-editor-wrap">
-			<div className="condition-editor-tabs">
-				<button
-					className={mode === 'builder' ? 'is-active' : undefined}
-					disabled={!rows}
-					onClick={() => {
+			<div className="condition-editor-toolbar">
+				<div className="condition-editor-tabs">
+					<button
+						className={mode === 'builder' ? 'is-active' : undefined}
+						disabled={!rows}
+						onClick={() => {
 						// Builder mode edits the stored rows directly.
 						if (rows) {
 							setMode('builder');
@@ -1328,13 +1325,13 @@ function ConditionEditor(props: {
 							setMode('builder');
 						}
 					}}
-					type="button"
-				>
-					{t('dialogs.passageEdit.visual.builderMode')}
-				</button>
-				<button
-					className={mode === 'expression' ? 'is-active' : undefined}
-					onClick={() => {
+						type="button"
+					>
+						{t('dialogs.passageEdit.visual.builderMode')}
+					</button>
+					<button
+						className={mode === 'expression' ? 'is-active' : undefined}
+						onClick={() => {
 						// Builder -> expression: serialize the structured shape.
 						if (rows) {
 							setFreeCode(
@@ -1346,9 +1343,13 @@ function ConditionEditor(props: {
 						}
 						setMode('expression');
 					}}
-					type="button"
-				>
-					{t('dialogs.passageEdit.visual.expressionMode')}
+						type="button"
+					>
+						{t('dialogs.passageEdit.visual.expressionMode')}
+					</button>
+				</div>
+				<button onClick={() => setEditing(false)} type="button">
+					{t('dialogs.passageEdit.visual.finishEditing')}
 				</button>
 			</div>
 
@@ -1382,7 +1383,10 @@ function ConditionEditor(props: {
 				</div>
 			)}
 
-			<ConditionFeedback condition={condition} states={states} />
+			<details className="condition-feedback-disclosure">
+				<summary>{t('dialogs.passageEdit.visual.testInformation')}</summary>
+				<ConditionFeedback condition={condition} states={states} />
+			</details>
 		</div>
 	);
 }
@@ -1463,9 +1467,6 @@ function BuilderCondition(props: {
 			<button onClick={() => addRow()} type="button">
 				{t('dialogs.passageEdit.visual.addAndCondition')}
 			</button>
-			<p className="condition-summary">
-				{conditionSentenceText(t, rowsToCondition(rows), states)}
-			</p>
 		</>
 	);
 
@@ -1778,6 +1779,8 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 	>('');
 	const [itemTemplateName, setItemTemplateName] = React.useState('');
 	const [itemTemplateQuantity, setItemTemplateQuantity] = React.useState(1);
+	const [editingActionIndex, setEditingActionIndex] = React.useState<number>();
+	const [addActionOpen, setAddActionOpen] = React.useState(false);
 	const backpackState = states.find(
 		state => state.name === BACKPACK_STATE_NAME
 	);
@@ -1796,6 +1799,7 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 
 		[actions[index], actions[target]] = [actions[target], actions[index]];
 		onUpdate({actions});
+		setEditingActionIndex(target);
 	}
 
 	return (
@@ -1872,7 +1876,14 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 				</div>
 			) : (
 				<div className="choice-actions choice-action-panel">
-					<span>{t('dialogs.passageEdit.visual.actions')}</span>
+					<div className="choice-panel-heading">
+						<span>{t('dialogs.passageEdit.visual.actions')}</span>
+						<span>
+							{t('dialogs.passageEdit.visual.actionCount', {
+								count: (choice.actions ?? []).length
+							})}
+						</span>
+					</div>
 					{(choice.actions ?? []).map((action, actionIndex) => {
 					const state = states.find(item => item.id === action.stateId);
 					return (
@@ -1897,6 +1908,20 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 								)}
 								<span>{actionSentenceText(t, action, states)}</span>
 								<div className="action-row-toolbar">
+									<button
+										onClick={() =>
+											setEditingActionIndex(current =>
+												current === actionIndex ? undefined : actionIndex
+											)
+										}
+										type="button"
+									>
+										{t(
+											editingActionIndex === actionIndex
+												? 'dialogs.passageEdit.visual.finishEditing'
+												: 'dialogs.passageEdit.visual.editAction'
+										)}
+									</button>
 									<IconButton
 										disabled={disabled || actionIndex === 0}
 										icon={<IconArrowUp />}
@@ -1918,17 +1943,20 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 										icon={<IconTrash />}
 										iconOnly
 										label={t('dialogs.passageEdit.visual.deleteAction')}
-										onClick={() =>
+										onClick={() => {
 											onUpdate({
 												actions: (choice.actions ?? []).filter(
 													(_, i) => i !== actionIndex
 												)
-											})
-										}
+											});
+											setEditingActionIndex(undefined);
+										}}
 										variant="danger"
 									/>
 								</div>
 							</div>
+							{editingActionIndex === actionIndex && (
+							<div className="action-row-fields">
 							{action.operation !== 'advanceTime' && (
 							<select
 								aria-label={t('dialogs.passageEdit.visual.actionState')}
@@ -2031,32 +2059,67 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 								value={action.value}
 							/>
 							)}
+							</div>
+							)}
 						</div>
 					);
 					})}
 					<button
-					disabled={states.length === 0 && !timeReady}
-					onClick={() => {
-						const state = states[0];
-						onUpdate({
-							actions: [
-								...(choice.actions ?? []),
-								state
-									? {
-											stateId: state.id,
-											operation: 'set',
-											value: stateValuePlaceholder(state)
-										}
-									: {
-											stateId: '',
-											operation: 'advanceTime',
-											value: 1
-										}
-							]
-						});
-					}}
-					type="button"
-					>{t('dialogs.passageEdit.visual.addAction')}</button>
+						className="choice-add-action-button"
+						disabled={disabled}
+						onClick={() => setAddActionOpen(open => !open)}
+						type="button"
+					>
+						{t('dialogs.passageEdit.visual.addAction')}
+					</button>
+					{addActionOpen && (
+					<div className="choice-action-create-panel">
+						<div className="choice-action-create-types">
+							<button
+								disabled={states.length === 0}
+								onClick={() => {
+									const state = states[0];
+
+									if (!state) {
+										return;
+									}
+
+									const nextIndex = (choice.actions ?? []).length;
+									onUpdate({
+										actions: [
+											...(choice.actions ?? []),
+											{
+												stateId: state.id,
+												operation: 'set',
+												value: stateValuePlaceholder(state)
+											}
+										]
+									});
+									setEditingActionIndex(nextIndex);
+									setAddActionOpen(false);
+								}}
+								type="button"
+							>
+								{t('dialogs.passageEdit.visual.addStateAction')}
+							</button>
+							<button
+								disabled={!timeReady}
+								onClick={() => {
+									const nextIndex = (choice.actions ?? []).length;
+									onUpdate({
+										actions: [
+											...(choice.actions ?? []),
+											{stateId: '', operation: 'advanceTime', value: 1}
+										]
+									});
+									setEditingActionIndex(nextIndex);
+									setAddActionOpen(false);
+								}}
+								type="button"
+							>
+								{t('dialogs.passageEdit.visual.addTimeAction')}
+							</button>
+						</div>
 					{!timeReady && (
 						<div className="system-capability-prompt">
 							<span>{t('dialogs.passageEdit.visual.timeSystemRequired')}</span>
@@ -2184,14 +2247,9 @@ const ChoiceEditor: React.FC<ChoiceEditorProps> = props => {
 				</div>
 			)}
 			</div>
-			{(choice.actions ?? []).length > 0 && (
-				<ul className="choice-actions-summary">
-					{groupedActionSentences(t, choice.actions ?? [], states).map(row => (
-						<li key={row.key}>{row.text}</li>
-					))}
-				</ul>
 			)}
 		</div>
+	</div>
 	);
 };
 
@@ -2821,6 +2879,18 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 		treeView
 	} = props;
 	const {t} = useTranslation();
+	const [viewMode, setViewMode] = React.useState<'overview' | 'full'>('overview');
+
+	React.useEffect(() => {
+		const selected = treeView.selectedBlockId;
+
+		if (
+			selected &&
+			branch.branches.some(item => findBlockById(item.blocks, selected))
+		) {
+			setViewMode('full');
+		}
+	}, [branch.branches, treeView.selectedBlockId]);
 
 	function updateBranch(index: number, props: Partial<VisualBranch>) {
 		const isLast = index === branch.branches.length - 1;
@@ -2870,6 +2940,91 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 
 	return (
 		<div className="visual-passage-choice visual-passage-branch">
+			<div className="branch-view-switch" role="group">
+				<button
+					className={viewMode === 'overview' ? 'is-active' : undefined}
+					onClick={() => setViewMode('overview')}
+					type="button"
+				>
+					{t('dialogs.passageEdit.visual.structureOverview')}
+				</button>
+				<button
+					className={viewMode === 'full' ? 'is-active' : undefined}
+					onClick={() => setViewMode('full')}
+					type="button"
+				>
+					{t('dialogs.passageEdit.visual.fullEdit')}
+				</button>
+			</div>
+			{viewMode === 'overview' ? (
+				<div className="branch-overview">
+					{branch.branches.map((item, index) => {
+						const isElse = index === branch.branches.length - 1;
+						const isActive = active === index;
+						const visibleBlocks = item.blocks.slice(0, 3);
+
+						return (
+							<section
+								className={`branch-overview-path${isActive ? ' is-active' : ''}${active !== undefined && !isActive ? ' is-inactive' : ''}`}
+								key={item.id}
+							>
+								<div className="branch-overview-heading">
+									<span className={`branch-path-label ${isElse ? 'is-else' : 'is-match'}`}>
+										{t(
+											isElse
+												? 'dialogs.passageEdit.visual.otherwise'
+												: 'dialogs.passageEdit.visual.whenMatched'
+										)}
+									</span>
+									<span className="branch-overview-condition">
+										{isElse
+											? t('dialogs.passageEdit.visual.fallbackBranch')
+											: item.condition
+												? conditionSentenceText(t, item.condition, states)
+												: t('dialogs.passageEdit.visual.statusIncomplete')}
+									</span>
+									{isActive && (
+										<span className="block-status-tag branch-active-status">
+											{t('dialogs.passageEdit.visual.currentMatch')}
+										</span>
+									)}
+								</div>
+								<div className="branch-overview-blocks">
+									{visibleBlocks.length === 0 ? (
+										<span className="empty-state">
+											{t('dialogs.passageEdit.visual.emptyBranch')}
+										</span>
+									) : (
+										visibleBlocks.map(child => {
+											const meta = blockKindMeta[child.kind];
+											const ChildIcon = meta.icon;
+
+											return (
+												<div className="branch-overview-block" key={child.id}>
+													<ChildIcon />
+													<strong>{t(meta.labelKey)}</strong>
+													<span>{blockSummaryText(child, states, story, t)}</span>
+												</div>
+											);
+										})
+									)}
+									{item.blocks.length > visibleBlocks.length && (
+										<span className="branch-overview-more">
+											{t('dialogs.passageEdit.visual.moreBlocks', {
+												count: item.blocks.length - visibleBlocks.length
+											})}
+										</span>
+									)}
+								</div>
+							</section>
+						);
+					})}
+					<button onClick={() => setViewMode('full')} type="button">
+						{t('dialogs.passageEdit.visual.openFullEditor')}
+					</button>
+				</div>
+			) : (
+			<>
 			{branch.branches.map((item, index) => {
 				const inactive = active !== undefined && active !== index;
 				const isElse = index === branch.branches.length - 1;
@@ -2941,6 +3096,8 @@ const BranchEditor: React.FC<BranchEditorProps> = props => {
 			<button disabled={disabled} onClick={addBranch} type="button">
 				{t('dialogs.passageEdit.visual.addBranch')}
 			</button>
+			</>
+			)}
 		</div>
 	);
 };
@@ -3368,31 +3525,37 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 					onClick={() => treeView.onSelectBlock(block.id, container)}
 					type="button"
 				>
-					<Icon />
-					<span className="block-summary-main">
-						<span className="block-kind">{kindLabel}</span>
-						<span className="block-structure-summary">{summary}</span>
+					<span className="block-summary-primary">
+						<Icon />
+						<span className="block-summary-main">
+							<span className="block-kind">{kindLabel}</span>
+							<span className="block-structure-summary">{summary}</span>
+						</span>
+						{incomplete && (
+							<span className="block-status-tag error-status">
+								{t('dialogs.passageEdit.visual.statusIncomplete')}
+							</span>
+						)}
 					</span>
-					{condition && !hidden && (
-						<span className="block-status-tag condition-status">
-							{conditionSentenceText(t, condition, states)}
-						</span>
-					)}
-					{hidden && condition && (
-						<span className="block-status-tag hidden-badge">
-							{t('dialogs.passageEdit.visual.statusHidden')}
-						</span>
-					)}
-					{block.kind === 'choice' && block.actions.length > 0 && (
-						<span className="block-status-tag action-status">
-							{t('dialogs.passageEdit.visual.summaryActions', {
-								count: block.actions.length
-							})}
-						</span>
-					)}
-					{incomplete && (
-						<span className="block-status-tag error-status">
-							{t('dialogs.passageEdit.visual.statusIncomplete')}
+					{(condition || (block.kind === 'choice' && block.actions.length > 0)) && (
+						<span className="block-summary-meta">
+							{condition && !hidden && (
+								<span className="block-status-tag condition-status">
+									{conditionSentenceText(t, condition, states)}
+								</span>
+							)}
+							{hidden && condition && (
+								<span className="block-status-tag hidden-badge">
+									{t('dialogs.passageEdit.visual.statusHidden')}
+								</span>
+							)}
+							{block.kind === 'choice' && block.actions.length > 0 && (
+								<span className="block-status-tag action-status">
+									{t('dialogs.passageEdit.visual.summaryActions', {
+										count: block.actions.length
+									})}
+								</span>
+							)}
 						</span>
 					)}
 				</button>

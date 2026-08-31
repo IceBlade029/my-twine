@@ -42,13 +42,13 @@ export function useViewCenter(
 				top: (top - height / story.zoom / 2) * story.zoom
 			};
 
-			if (dialogs.length > 0) {
+			if (dialogs.some(dialog => dialog.presentation !== 'modal')) {
 				scroll.left += prefs.dialogWidth / 2;
 			}
 
 			elementRef.current.scrollTo(scroll);
 		},
-		[dialogs.length, elementRef, prefs.dialogWidth, story.zoom]
+		[dialogs, elementRef, prefs.dialogWidth, story.zoom]
 	);
 
 	return {getCenter, setCenter};

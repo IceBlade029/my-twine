@@ -23,6 +23,8 @@ export const StoryStructureButton: React.FC<StoryStructureButtonProps> = ({
 				dispatch({
 					type: 'addDialog',
 					component: StoryStructureDialog,
+					presentation: 'modal',
+					modalSize: 'wide',
 					props: {storyId: story.id}
 				})
 			}

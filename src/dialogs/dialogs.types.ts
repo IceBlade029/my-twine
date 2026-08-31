@@ -25,6 +25,10 @@ export interface Dialog {
 	 * back to its previous position.
 	 */
 	maximized: boolean;
+	/** Where the dialog is presented. Omitted means the normal right-side panel. */
+	presentation?: 'modal';
+	/** Width preset used by modal presentation. */
+	modalSize?: 'standard' | 'wide';
 	/**
 	 * Props to apply to the component.
 	 */
@@ -37,6 +41,8 @@ export type DialogsAction =
 	| {
 			type: 'addDialog';
 			component: React.ComponentType<any>;
+			presentation?: 'modal';
+			modalSize?: 'standard' | 'wide';
 			props?: Record<string, any>;
 	  }
 	| {type: 'removeDialog'; index: number}

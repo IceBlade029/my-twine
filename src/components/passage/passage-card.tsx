@@ -44,6 +44,10 @@ function visualPassageExcerpt(visual: VisualPassageContent): string {
 				return block.text;
 			}
 
+			if (block.kind === 'dialogue' && block.text !== '') {
+				return block.text;
+			}
+
 			if (block.kind === 'branch') {
 				for (const branch of block.branches) {
 					const found = firstText(branch.blocks);

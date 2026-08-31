@@ -17,9 +17,14 @@ export const Dialogs: React.FC = () => {
 	const {prefs} = usePrefsContext();
 	const {dispatch, dialogs} = useDialogsContext();
 
-	const hasUnmaximized = dialogs.some(dialog => !dialog.maximized);
-	const containsPassageEditor = dialogs.some(
+	const dockedDialogs = dialogs.filter(dialog => dialog.presentation !== 'modal');
+	const hasUnmaximized = dockedDialogs.some(dialog => !dialog.maximized);
+	const containsPassageEditor = dockedDialogs.some(
 		dialog => dialog.component.displayName === 'PassageEditStack'
+	);
+	const lastModalIndex = dialogs.reduce(
+		(last, dialog, index) => (dialog.presentation === 'modal' ? index : last),
+		-1
 	);
 	const containerStyle: React.CSSProperties = {
 		paddingLeft: `calc(100% - (${prefs.dialogWidth}px + 2 * (var(--grid-size))))`,
@@ -43,6 +48,7 @@ export const Dialogs: React.FC = () => {
 		>
 			<TransitionGroup component={null}>
 				{dialogs.map((dialog, index) => {
+					const modal = dialog.presentation === 'modal';
 					const managementProps = {
 						collapsed: dialog.collapsed,
 						highlighted: dialog.highlighted,
@@ -55,12 +61,25 @@ export const Dialogs: React.FC = () => {
 							dispatch({type: 'setDialogMaximized', maximized, index}),
 						onChangeProps: (props: Record<string, any>) =>
 							dispatch({type: 'setDialogProps', index, props}),
-						onClose: () => dispatch({type: 'removeDialog', index})
+						onClose: () => dispatch({type: 'removeDialog', index}),
+						collapsible: !modal,
+						modal
 					};
 
 					return (
 						<DialogTransition key={index}>
-							{dialog.maximized ? (
+							{modal ? (
+								<div
+									aria-hidden={index !== lastModalIndex || undefined}
+									className={`dialog-modal-layer${
+										index !== lastModalIndex ? ' is-covered' : ''
+									}`}
+								>
+									<div className={`dialog-modal-surface is-${dialog.modalSize ?? 'standard'}`}>
+										<dialog.component {...dialog.props} {...managementProps} />
+									</div>
+								</div>
+							) : dialog.maximized ? (
 								<div className="maximized" style={maximizedStyle}>
 									<dialog.component {...dialog.props} {...managementProps} />
 								</div>

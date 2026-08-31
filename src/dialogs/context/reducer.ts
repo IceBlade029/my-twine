@@ -14,14 +14,10 @@ export const reducer: React.Reducer<DialogsState, DialogsAction> = (
 			let exists = false;
 			const editedState = state.map(stateDialog => {
 				if (
-					isEqual(stateDialog, {
-						// Ignore collapsed, highlighted, and maximized properties for comparison.
-						collapsed: stateDialog.collapsed,
-						component: action.component,
-						highlighted: stateDialog.highlighted,
-						maximized: stateDialog.maximized,
-						props: action.props
-					})
+					stateDialog.component === action.component &&
+					isEqual(stateDialog.props, action.props) &&
+					stateDialog.presentation === action.presentation &&
+					stateDialog.modalSize === action.modalSize
 				) {
 					exists = true;
 					return {...stateDialog, collapsed: false, highlighted: true};
@@ -41,6 +37,10 @@ export const reducer: React.Reducer<DialogsState, DialogsAction> = (
 					component: action.component,
 					highlighted: false,
 					maximized: false,
+					...(action.presentation
+						? {presentation: action.presentation}
+						: {}),
+					...(action.modalSize ? {modalSize: action.modalSize} : {}),
 					props: action.props
 				}
 			];

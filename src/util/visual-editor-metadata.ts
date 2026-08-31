@@ -4,6 +4,7 @@ import {
 	VisualBranch,
 	VisualBranchBlock,
 	VisualChoiceBlock,
+	VisualDialogueBlock,
 	VisualExpression,
 	VisualIncludeBlock,
 	VisualInteractionBlock,
@@ -60,6 +61,7 @@ interface SerializedLoopBlock extends Omit<VisualLoopBlock, 'blocks'> {
 
 type SerializedBlock =
 	| VisualTextBlock
+	| VisualDialogueBlock
 	| SerializedChoiceBlock
 	| VisualInteractionBlock
 	| VisualVariableBlock

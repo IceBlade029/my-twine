@@ -1,5 +1,31 @@
 import {PassageEditStack} from '../../passage-edit';
-import {addPassageEditors, removePassageEditors} from '../action-creators';
+import {StoryCharactersDialog} from '../../story-characters';
+import {StoryStatesDialog} from '../../story-states';
+import {
+	addPassageEditors,
+	addStoryCharacters,
+	addStoryStates,
+	removePassageEditors
+} from '../action-creators';
+
+describe('story-level modal dialogs', () => {
+	it('opens characters and states as standard modals', () => {
+		expect(addStoryCharacters('story')).toEqual({
+			type: 'addDialog',
+			component: StoryCharactersDialog,
+			presentation: 'modal',
+			modalSize: 'standard',
+			props: {storyId: 'story'}
+		});
+		expect(addStoryStates('story')).toEqual({
+			type: 'addDialog',
+			component: StoryStatesDialog,
+			presentation: 'modal',
+			modalSize: 'standard',
+			props: {storyId: 'story'}
+		});
+	});
+});
 
 describe('addPassageEditors', () => {
 	it("dispatches an action to create a passage editor stack if one doesn't exist", () => {

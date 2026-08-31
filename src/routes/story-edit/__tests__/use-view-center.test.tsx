@@ -105,6 +105,43 @@ describe('useViewCenter', () => {
 			]);
 		});
 
+		it('does not adjust the center for modal dialogs', () => {
+			const dialogWidth = faker.number.int();
+			const {result} = renderHook(
+				() => useViewCenter(story, {current: el as any}),
+				{
+					wrapper: ({children}) => (
+						<FakeStateProvider prefs={{dialogWidth}}>
+							<DialogsContext.Provider
+								value={{
+									dispatch: jest.fn(),
+									dialogs: [
+										{
+											collapsed: false,
+											component: () => null,
+											highlighted: false,
+											maximized: false,
+											presentation: 'modal'
+										}
+									]
+								}}
+							>
+								{children}
+							</DialogsContext.Provider>
+						</FakeStateProvider>
+					)
+				}
+			);
+			const left = faker.number.int();
+			const top = faker.number.int();
+
+			result.current.setCenter({left, top});
+			expect(el.scrollTo).toHaveBeenCalledWith({
+				left: (left - 200 / story.zoom / 2) * story.zoom,
+				top: (top - 100 / story.zoom / 2) * story.zoom
+			});
+		});
+
 		it('throws an error if the element ref is currently null', () => {
 			const {result} = renderHook(() => useViewCenter(story, {current: null}));
 

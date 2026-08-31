@@ -1,13 +1,30 @@
 import {Thunk} from 'react-hook-thunk-reducer';
 import {DialogsAction, DialogsState} from '../dialogs.types';
 import {PassageEditStack} from '../passage-edit';
+import {StoryCharactersDialog} from '../story-characters';
 import {StoryStatesDialog} from '../story-states';
+
+export function addStoryCharacters(storyId: string): DialogsAction {
+	return {
+		type: 'addDialog',
+		component: StoryCharactersDialog,
+		presentation: 'modal',
+		modalSize: 'standard',
+		props: {storyId}
+	};
+}
 
 /**
  * Adds a dialog for editing the story states used by the visual editor.
  */
 export function addStoryStates(storyId: string): DialogsAction {
-	return {type: 'addDialog', component: StoryStatesDialog, props: {storyId}};
+	return {
+		type: 'addDialog',
+		component: StoryStatesDialog,
+		presentation: 'modal',
+		modalSize: 'standard',
+		props: {storyId}
+	};
 }
 
 /**

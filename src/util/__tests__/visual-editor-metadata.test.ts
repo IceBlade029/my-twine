@@ -106,6 +106,45 @@ describe('visual editor HTML metadata', () => {
 		);
 	});
 
+	it('round trips story characters and dialogue blocks through HTML', () => {
+		const original = fakeStory(1);
+
+		original.visual = {
+			characters: [
+				{color: 'coral', id: 'su', name: '苏青'},
+				{color: 'blue', id: 'lin', name: '林默'}
+			],
+			states: [],
+			version: 1
+		};
+		original.passages[0].visual = {
+			blocks: [
+				{
+					characterId: 'su',
+					id: 'dialogue-1',
+					kind: 'dialogue',
+					participantCharacterIds: ['su', 'lin'],
+					stageDirection: '看向窗外',
+					text: '路上遇到了一点麻烦。'
+				}
+			],
+			version: 2
+		};
+		original.passages[0].text = compileVisualPassage(
+			original.passages[0].visual,
+			original,
+			original.passages[0].id
+		);
+
+		const [restored] = importStories(
+			publishStory(original, fakeAppInfo(), {startOptional: true})
+		);
+
+		expect(restored.visual?.characters).toEqual(original.visual.characters);
+		expect(restored.passages[0].visual).toEqual(original.passages[0].visual);
+		expect(restored.passages[0].text).toBe(original.passages[0].text);
+	});
+
 	it('round trips advance-time choice actions through HTML', () => {
 		const story = fakeStory(2);
 

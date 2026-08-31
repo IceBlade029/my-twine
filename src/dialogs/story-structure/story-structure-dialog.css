@@ -60,7 +60,8 @@
 }
 
 .story-system-card.system-backpack,
-.story-system-card.system-variables {
+.story-system-card.system-variables,
+.story-system-card.system-characters {
 	--card-tone: var(--structure-state);
 }
 

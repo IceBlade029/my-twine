@@ -3034,4 +3034,131 @@ describe('运行检查 runtime drawer (P3)', () => {
 
 		expect(screen.getByRole('alert')).toHaveTextContent('engine exploded');
 	});
+
+	it('groups adjacent dialogue lines and creates the next line with Enter', () => {
+		const {container, story} = renderComponent(setup => {
+			setup.visual = {
+				characters: [
+					{color: 'blue', id: 'lin', name: '林默'},
+					{color: 'coral', id: 'su', name: '苏青'}
+				],
+				states: [],
+				version: 1
+			};
+			setup.passages[0].visual = {
+				blocks: [
+					{characterId: 'lin', id: 'd1', kind: 'dialogue', text: '你终于来了。'},
+					{
+						characterId: 'su',
+						id: 'd2',
+						kind: 'dialogue',
+						text: '路上遇到了一点麻烦。'
+					}
+				],
+				version: 2
+			};
+		});
+
+		expect(
+			screen.getByText('dialogs.passageEdit.visual.dialogueGroup')
+		).toBeInTheDocument();
+		expect(container.querySelectorAll('.is-dialogue-group-member')).toHaveLength(2);
+
+		const first = container.querySelector(
+			'.visual-block[data-block-id="d1"]'
+		) as HTMLElement;
+		fireEvent.click(first.querySelector('.block-summary-button') as Element);
+		const editor = within(first).getByLabelText(
+			'dialogs.passageEdit.visual.dialogueText'
+		);
+
+		fireEvent.change(editor, {target: {value: '我们没有多少时间了。'}});
+		fireEvent.keyDown(editor, {key: 'Enter'});
+
+		expect(container.querySelectorAll('.is-dialogue-group-member')).toHaveLength(3);
+		expect(screen.getByTestId(`passage-${story.passages[0].id}`)).toHaveTextContent(
+			'我们没有多少时间了。'
+		);
+		expect(
+			container.querySelectorAll(
+				'.is-expanded .dialogue-block-editor textarea'
+			)
+		).toHaveLength(2);
+	});
+
+	it('uses the story character library instead of inline character editing', () => {
+		const {container, story} = renderComponent(setup => {
+			setup.visual = {characters: [{color: 'blue', id: 'lin', name: '林默'}], states: [], version: 1};
+			setup.passages[0].visual = {
+				blocks: [{characterId: '', id: 'd1', kind: 'dialogue', text: ''}],
+				version: 2
+			};
+		});
+		const block = container.querySelector(
+			'.visual-block[data-block-id="d1"]'
+		) as HTMLElement;
+
+		fireEvent.click(block.querySelector('.block-summary-button') as Element);
+		fireEvent.click(
+			block.querySelector('.dialogue-speaker-button') as Element
+		);
+		expect(within(block).getByText('dialogs.passageEdit.visual.manageCharacterLibrary')).toBeInTheDocument();
+		expect(within(block).queryByText('dialogs.passageEdit.visual.createCharacter')).not.toBeInTheDocument();
+		fireEvent.click(within(block).getByRole('button', {name: '林默'}));
+		const editor = within(block).getByLabelText(
+			'dialogs.passageEdit.visual.dialogueText'
+		);
+		fireEvent.change(editor, {target: {value: '你终于来了。'}});
+		fireEvent.keyDown(editor, {key: 'Enter'});
+
+		const compiled = screen.getByTestId(`passage-${story.passages[0].id}`);
+		expect(compiled).toHaveTextContent('data-character-id');
+		expect(compiled).toHaveTextContent('林默');
+		expect(compiled).toHaveTextContent('#3978c5');
+	});
+
+	it('sets dialogue participants and cycles speakers with Tab', () => {
+		const {container, story} = renderComponent(setup => {
+			setup.visual = {
+				characters: [
+					{color: 'blue', id: 'lin', name: '林默'},
+					{color: 'coral', id: 'su', name: '苏青'}
+				],
+				states: [],
+				version: 1
+			};
+			setup.passages[0].visual = {
+				blocks: [
+					{characterId: 'lin', id: 'd1', kind: 'dialogue', text: '轮到谁？'}
+				],
+				version: 2
+			};
+		});
+
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: /dialogs\.passageEdit\.visual\.dialogueGroupCharacters/
+			})
+		);
+		const participants = screen.getByRole('group', {
+			name: 'dialogs.passageEdit.visual.dialogueGroupCharacters'
+		});
+
+		fireEvent.click(within(participants).getByRole('button', {name: '苏青'}));
+
+		const block = container.querySelector(
+			'.visual-block[data-block-id="d1"]'
+		) as HTMLElement;
+		fireEvent.click(block.querySelector('.block-summary-button') as Element);
+		const editor = within(block).getByLabelText(
+			'dialogs.passageEdit.visual.dialogueText'
+		);
+
+		fireEvent.keyDown(editor, {key: 'Tab'});
+
+		expect(within(block).getByRole('button', {name: '苏青'})).toBeInTheDocument();
+		expect(screen.getByTestId(`passage-${story.passages[0].id}`)).toHaveTextContent(
+			'data-character-id="su"'
+		);
+	});
 });

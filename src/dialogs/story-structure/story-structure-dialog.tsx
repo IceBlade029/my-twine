@@ -4,6 +4,7 @@ import {
 	IconCheck,
 	IconClock,
 	IconFileCode,
+	IconUsers,
 	IconVariable
 } from '@tabler/icons';
 import * as React from 'react';
@@ -24,7 +25,7 @@ import {
 	SpecialPassageName,
 	specialPassageMeta
 } from '../../util/special-passages';
-import {addStoryStates, useDialogsContext} from '../context';
+import {addStoryCharacters, addStoryStates, useDialogsContext} from '../context';
 import {DialogComponentProps} from '../dialogs.types';
 import './story-structure-dialog.css';
 
@@ -75,6 +76,7 @@ export const StoryStructureDialog: React.FC<StoryStructureDialogProps> = props =
 	const time = timeSystemStatus(story);
 	const backpack = backpackSystemStatus(story);
 	const stateCount = story.visual?.states.length ?? 0;
+	const characterCount = story.visual?.characters?.length ?? 0;
 
 	function locatePassage(name: string) {
 		const passage = story!.passages.find(item => item.name === name);
@@ -176,6 +178,20 @@ export const StoryStructureDialog: React.FC<StoryStructureDialogProps> = props =
 							</div>
 						</div>
 						<div className="story-system-grid">
+							<article className="story-system-card system-characters">
+								<span className="story-system-icon"><IconUsers /></span>
+								<div>
+									<strong>{t('dialogs.storyStructure.characterLibrary')}</strong>
+									<span>{t('dialogs.storyStructure.characterCount', {count: characterCount})}</span>
+								</div>
+								<button
+									onClick={() => dialogDispatch(addStoryCharacters(story.id))}
+									type="button"
+								>
+									{t('dialogs.storyStructure.manage')}
+								</button>
+							</article>
+
 							<article className="story-system-card system-variables">
 								<span className="story-system-icon"><IconVariable /></span>
 								<div>

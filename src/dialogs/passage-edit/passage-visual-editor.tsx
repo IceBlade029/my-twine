@@ -15,6 +15,7 @@ import {
 	IconGitBranch,
 	IconGripVertical,
 	IconAlertTriangle,
+	IconMessages,
 	IconPlus,
 	IconPointer,
 	IconRepeat,
@@ -42,6 +43,8 @@ import {
 	VisualBranch,
 	VisualBranchBlock,
 	VisualChoiceBlock,
+	VisualCharacter,
+	VisualDialogueBlock,
 	VisualExpression,
 	VisualIncludeBlock,
 	VisualInteractionBlock,
@@ -71,6 +74,8 @@ import {
 	serializeExpressionToCode
 } from '../../util/visual-passage';
 import {analyzeExpression} from '../../util/expression-analysis';
+import {dialogueCharacterTone} from '../../util/dialogue';
+import {addStoryCharacters, useDialogsContext} from '../context';
 import {defaultValueForState, StateValueInput} from '../story-states';
 import {PassageVisualRunDrawer} from './passage-visual-run-drawer';
 import './passage-visual-editor.css';
@@ -89,6 +94,10 @@ const blockKindMeta: Record<VisualBlock['kind'], BlockKindMeta> = {
 	text: {
 		icon: IconTypography,
 		labelKey: 'dialogs.passageEdit.visual.blockKindText'
+	},
+	dialogue: {
+		icon: IconMessages,
+		labelKey: 'dialogs.passageEdit.visual.blockKindDialogue'
 	},
 	choice: {
 		icon: IconArrowsRight,
@@ -152,6 +161,13 @@ const moduleGroups: {titleKey: string; entries: ModuleEntry[]}[] = [
 				labelKey: 'dialogs.passageEdit.visual.blockKindText',
 				aliases: ['text'],
 				descriptionKey: 'dialogs.passageEdit.visual.moduleTextDescription'
+			},
+			{
+				kind: 'dialogue',
+				labelKey: 'dialogs.passageEdit.visual.blockKindDialogue',
+				aliases: ['dialogue', 'speaker', 'script'],
+				descriptionKey:
+					'dialogs.passageEdit.visual.moduleDialogueDescription'
 			},
 			{
 				kind: 'choice',
@@ -320,8 +336,18 @@ function shortened(value: string, fallback: string, maximum = 72) {
 function blockIsIncomplete(
 	block: VisualBlock,
 	states: VisualStoryState[],
-	insideLoop: boolean
+	insideLoop: boolean,
+	story?: Story
 ) {
+	if (block.kind === 'dialogue') {
+		return (
+			block.text.trim() === '' ||
+			!story?.visual?.characters?.some(
+				character => character.id === block.characterId
+			)
+		);
+	}
+
 	if (block.kind === 'choice') {
 		return (
 			block.label.trim() === '' ||
@@ -389,6 +415,14 @@ function blockSummaryText(
 
 	if (block.kind === 'text') {
 		return shortened(block.text, empty);
+	}
+
+	if (block.kind === 'dialogue') {
+		const character = story.visual?.characters?.find(
+			item => item.id === block.characterId
+		);
+
+		return `${character?.name ?? '—'} · ${shortened(block.text, empty)}`;
 	}
 
 	if (block.kind === 'choice') {
@@ -933,7 +967,7 @@ function useDebouncedSave<T>(
 	onPending: () => void,
 	onFlushed: () => void,
 	delay = 300
-): [T, (value: T) => void, () => void] {
+): [T, (value: T) => void, () => void, () => void] {
 	const [value, setValue] = React.useState(propValue);
 	const commitRef = React.useRef(commit);
 	const onFlushedRef = React.useRef(onFlushed);
@@ -996,6 +1030,20 @@ function useDebouncedSave<T>(
 		[delay]
 	);
 
+	const cancel = React.useCallback(() => {
+		if (!pendingRef.current) {
+			return;
+		}
+
+		if (timerRef.current !== undefined) {
+			window.clearTimeout(timerRef.current);
+		}
+
+		timerRef.current = undefined;
+		pendingRef.current = false;
+		onFlushedRef.current();
+	}, []);
+
 	// Flush any pending save when the editor unmounts.
 	React.useEffect(
 		() => () => {
@@ -1004,7 +1052,7 @@ function useDebouncedSave<T>(
 		[flush]
 	);
 
-	return [value, schedule, flush];
+	return [value, schedule, flush, cancel];
 }
 
 /**
@@ -1704,6 +1752,225 @@ interface TextBlockEditorProps {
 	onUpdate: (props: Partial<VisualTextBlock>) => void;
 	states: VisualStoryState[];
 }
+
+interface DialogueCharactersContextValue {
+	characters: VisualCharacter[];
+	onManage: () => void;
+}
+
+const DialogueCharactersContext = React.createContext<
+	DialogueCharactersContextValue | undefined
+>(undefined);
+
+function dialogueCharacterStyle(character?: VisualCharacter) {
+	const tone = dialogueCharacterTone(character?.color ?? 'slate');
+
+	return {
+		'--dialogue-character-color': tone.solid,
+		'--dialogue-character-tint': tone.tint
+	} as React.CSSProperties;
+}
+
+interface DialogueBlockEditorProps {
+	block: VisualDialogueBlock;
+	disabled?: boolean;
+	participantCharacterIds: string[];
+	onInsertNext: (
+		characterId: string,
+		text: string,
+		stageDirection: string
+	) => void;
+	onSaveFlushed: () => void;
+	onSavePending: () => void;
+	onUpdate: (props: Partial<VisualDialogueBlock>) => void;
+	states: VisualStoryState[];
+}
+
+const DialogueBlockEditor: React.FC<DialogueBlockEditorProps> = props => {
+	const {
+		block,
+		disabled,
+		participantCharacterIds,
+		onInsertNext,
+		onSaveFlushed,
+		onSavePending,
+		onUpdate,
+		states
+	} = props;
+	const context = React.useContext(DialogueCharactersContext);
+	const {t} = useTranslation();
+	const pickerRef = React.useRef<HTMLDivElement>(null);
+	const [pickerOpen, setPickerOpen] = React.useState(false);
+	const [conditionOpen, setConditionOpen] = React.useState(Boolean(block.condition));
+	const characters = context?.characters ?? [];
+	const character = characters.find(item => item.id === block.characterId);
+	const [text, scheduleText, flushText, cancelText] = useDebouncedSave(
+		block.text,
+		next => onUpdate({text: next}),
+		onSavePending,
+		onSaveFlushed
+	);
+	const [stageDirection, scheduleStageDirection, flushStageDirection, cancelStageDirection] =
+		useDebouncedSave(
+			block.stageDirection ?? '',
+			next => onUpdate({stageDirection: next}),
+			onSavePending,
+			onSaveFlushed
+		);
+
+	React.useEffect(() => {
+		if (!pickerOpen) {
+			return;
+		}
+
+		const close = (event: PointerEvent) => {
+			if (!pickerRef.current?.contains(event.target as Node)) {
+				setPickerOpen(false);
+			}
+		};
+
+		window.addEventListener('pointerdown', close);
+		return () => window.removeEventListener('pointerdown', close);
+	}, [pickerOpen]);
+
+	return (
+		<div
+			className="dialogue-block-editor"
+			style={dialogueCharacterStyle(character)}
+		>
+			<div className="dialogue-line-editor">
+				<div className="dialogue-speaker-control" ref={pickerRef}>
+					<button
+						aria-expanded={pickerOpen}
+						className="dialogue-speaker-button"
+						disabled={disabled}
+						onClick={() => setPickerOpen(open => !open)}
+						type="button"
+					>
+						<span className="dialogue-character-dot" />
+						{character?.name ?? t('dialogs.passageEdit.visual.chooseCharacter')}
+						<IconChevronDown />
+					</button>
+					{pickerOpen && (
+						<div className="dialogue-character-picker">
+							<strong>{t('dialogs.passageEdit.visual.recentCharacters')}</strong>
+							<div className="dialogue-character-list">
+								{characters.length === 0 && (
+									<span className="dialogue-character-empty">
+										{t('dialogs.passageEdit.visual.noCharacters')}
+									</span>
+								)}
+								{characters.map(item => (
+									<button
+										className={item.id === block.characterId ? 'is-active' : ''}
+										key={item.id}
+										onClick={() => {
+											onUpdate({characterId: item.id});
+											setPickerOpen(false);
+										}}
+										style={dialogueCharacterStyle(item)}
+										type="button"
+									>
+										<span className="dialogue-character-dot" />
+										{item.name}
+									</button>
+								))}
+							</div>
+							<button
+								className="dialogue-manage-characters"
+								onClick={() => {
+									setPickerOpen(false);
+									context?.onManage();
+								}}
+								type="button"
+							>
+								{characters.length === 0
+									? t('dialogs.passageEdit.visual.createCharactersInLibrary')
+									: t('dialogs.passageEdit.visual.manageCharacterLibrary')}
+							</button>
+						</div>
+					)}
+				</div>
+				<textarea
+					aria-label={t('dialogs.passageEdit.visual.dialogueText')}
+					autoFocus
+					disabled={disabled}
+					onBlur={flushText}
+					onChange={event => scheduleText(event.target.value)}
+					placeholder={t('dialogs.passageEdit.visual.dialogueTextPlaceholder')}
+					value={text}
+					onKeyDown={event => {
+						if (
+							event.key === 'Tab' &&
+							!event.altKey &&
+							!event.ctrlKey &&
+							!event.metaKey &&
+							participantCharacterIds.length > 0
+						) {
+							event.preventDefault();
+							const currentIndex = participantCharacterIds.indexOf(
+								block.characterId
+							);
+							const direction = event.shiftKey ? -1 : 1;
+							const nextIndex =
+								currentIndex < 0
+									? event.shiftKey
+										? participantCharacterIds.length - 1
+										: 0
+									: (currentIndex + direction + participantCharacterIds.length) %
+										participantCharacterIds.length;
+
+							onUpdate({characterId: participantCharacterIds[nextIndex]});
+							return;
+						}
+
+						if (
+							event.key === 'Enter' &&
+							!event.shiftKey &&
+							!event.nativeEvent.isComposing
+						) {
+							event.preventDefault();
+							cancelText();
+							cancelStageDirection();
+							onInsertNext(block.characterId, text, stageDirection);
+						}
+					}}
+				/>
+			</div>
+			<div className="dialogue-secondary-row">
+				<label>
+					<span>{t('dialogs.passageEdit.visual.stageDirection')}</span>
+					<input
+						disabled={disabled}
+						onBlur={flushStageDirection}
+						onChange={event => scheduleStageDirection(event.target.value)}
+						placeholder={t('dialogs.passageEdit.visual.stageDirectionPlaceholder')}
+						value={stageDirection}
+					/>
+				</label>
+				<button
+					className={block.condition ? 'has-condition' : ''}
+					onClick={() => setConditionOpen(open => !open)}
+					type="button"
+				>
+					{t('dialogs.passageEdit.visual.condition')}
+				</button>
+			</div>
+			{conditionOpen && (
+				<div className="dialogue-condition-editor">
+					<ConditionEditor
+						condition={block.condition}
+						onChange={condition => onUpdate({condition})}
+						states={states}
+					/>
+				</div>
+			)}
+			<div className="dialogue-keyboard-hint">
+				{t('dialogs.passageEdit.visual.dialogueKeyboardHint')}
+			</div>
+		</div>
+	);
+};
 
 const TextBlockEditor: React.FC<TextBlockEditorProps> = props => {
 	const {
@@ -3383,6 +3650,15 @@ interface BlockShellProps {
 		end: boolean;
 		start: boolean;
 	};
+	dialogueCharacter?: VisualCharacter;
+	dialogueGroup?: {
+		characters: number;
+		count: number;
+		end: boolean;
+		participantCharacterIds: string[];
+		start: boolean;
+		usedCharacterIds: string[];
+	};
 	condition?: VisualExpression;
 	depth: number;
 	disabled?: boolean;
@@ -3393,6 +3669,8 @@ interface BlockShellProps {
 	kindLabel: string;
 	insertSelector?: React.ReactNode;
 	onAddChoice?: () => void;
+	onAddDialogue?: () => void;
+	onChangeDialogueParticipants?: (characterIds: string[]) => void;
 	onDelete: () => void;
 	onDragEnd: React.DragEventHandler<HTMLButtonElement>;
 	onDragStart: React.DragEventHandler<HTMLButtonElement>;
@@ -3422,6 +3700,8 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		canMoveUp,
 		children,
 		choiceGroup,
+		dialogueCharacter,
+		dialogueGroup,
 		condition,
 		depth,
 		disabled,
@@ -3432,6 +3712,8 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		kindLabel,
 		insertSelector,
 		onAddChoice,
+		onAddDialogue,
+		onChangeDialogueParticipants,
 		onDelete,
 		onDragEnd,
 		onDragStart,
@@ -3447,15 +3729,18 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 		treeView
 	} = props;
 	const {t} = useTranslation();
+	const dialogueCharactersContext = React.useContext(DialogueCharactersContext);
 	const Icon = icon;
 	const shellRef = React.useRef<HTMLDivElement>(null);
 	const [insertMenuOpen, setInsertMenuOpen] = React.useState(false);
+	const [dialogueParticipantsOpen, setDialogueParticipantsOpen] =
+		React.useState(false);
 	const [showCode, setShowCode] = React.useState(false);
 	const container = isContainerBlock(block);
 	const collapsed = container && treeView.collapsedContainerIds.has(block.id);
 	const expanded = container ? !collapsed : treeView.expandedBlockIds.has(block.id);
 	const selected = treeView.selectedBlockId === block.id;
-	const incomplete = blockIsIncomplete(block, states, insideLoop);
+	const incomplete = blockIsIncomplete(block, states, insideLoop, story);
 	const summary = blockSummaryText(block, states, story, t);
 	const fragment = React.useMemo(
 		() => compileBlockFragment(block, states, story, undefined, insideLoop).trim(),
@@ -3463,20 +3748,21 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 	);
 
 	React.useEffect(() => {
-		if (!insertMenuOpen) {
+		if (!insertMenuOpen && !dialogueParticipantsOpen) {
 			return;
 		}
 
 		const closeOnOutsidePointer = (event: PointerEvent) => {
 			if (!shellRef.current?.contains(event.target as Node)) {
 				setInsertMenuOpen(false);
+				setDialogueParticipantsOpen(false);
 			}
 		};
 
 		window.addEventListener('pointerdown', closeOnOutsidePointer);
 
 		return () => window.removeEventListener('pointerdown', closeOnOutsidePointer);
-	}, [insertMenuOpen]);
+	}, [dialogueParticipantsOpen, insertMenuOpen]);
 
 	return (
 		<div
@@ -3486,6 +3772,9 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 				choiceGroup ? ' is-choice-group-member' : ''
 			}${choiceGroup?.start ? ' is-choice-group-start' : ''}${
 				choiceGroup?.end ? ' is-choice-group-end' : ''
+			}${dialogueGroup ? ' is-dialogue-group-member' : ''}${
+				dialogueGroup?.start ? ' is-dialogue-group-start' : ''
+			}${dialogueGroup?.end ? ' is-dialogue-group-end' : ''
 			}${dragging ? ' is-dragging' : ''}${
 				dropPosition ? ` is-drop-${dropPosition}` : ''
 			}`}
@@ -3495,7 +3784,122 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 			onDragOver={onDragOverBlock}
 			onDrop={onDropBlock}
 			ref={shellRef}
+			style={
+				block.kind === 'dialogue'
+					? dialogueCharacterStyle(dialogueCharacter)
+					: undefined
+			}
 		>
+			{dialogueGroup?.start && (
+				<div className="dialogue-group-header">
+					<div className="dialogue-group-heading">
+						<span className="dialogue-group-title">
+							<IconMessages />
+							{t('dialogs.passageEdit.visual.dialogueGroup')}
+						</span>
+						<span className="dialogue-group-heading-actions">
+							<span className="dialogue-group-metrics">
+								{t('dialogs.passageEdit.visual.dialogueGroupMetrics', {
+									characters: dialogueGroup.characters,
+									count: dialogueGroup.count
+								})}
+							</span>
+							<IconButton
+								disabled={disabled}
+								icon={<IconPlus />}
+								iconOnly
+								label={t('dialogs.passageEdit.visual.addDialogueLine')}
+								onClick={onAddDialogue}
+								variant="create"
+							/>
+						</span>
+					</div>
+					<button
+						aria-expanded={dialogueParticipantsOpen}
+						className="dialogue-group-participants-toggle"
+						disabled={disabled}
+						onClick={() => setDialogueParticipantsOpen(open => !open)}
+						type="button"
+					>
+						<span>{t('dialogs.passageEdit.visual.dialogueGroupCharacters')}</span>
+						<span className="dialogue-group-participant-chips">
+							{dialogueGroup.participantCharacterIds.length === 0
+								? t('dialogs.passageEdit.visual.dialogueGroupCharactersEmpty')
+								: dialogueGroup.participantCharacterIds
+										.map(id => story.visual?.characters?.find(item => item.id === id))
+										.filter((item): item is VisualCharacter => Boolean(item))
+										.map(item => (
+											<span key={item.id} style={dialogueCharacterStyle(item)}>
+												<span className="dialogue-character-dot" />
+												{item.name}
+											</span>
+										))}
+						</span>
+						<IconChevronDown />
+					</button>
+					{dialogueParticipantsOpen && (
+						<div
+							aria-label={t('dialogs.passageEdit.visual.dialogueGroupCharacters')}
+							className="dialogue-group-participants-picker"
+							role="group"
+						>
+							<span className="dialogue-group-participants-help">
+								{t('dialogs.passageEdit.visual.dialogueGroupCharactersHelp')}
+							</span>
+							{(story.visual?.characters ?? []).length === 0 && (
+								<span>{t('dialogs.passageEdit.visual.noCharacters')}</span>
+							)}
+							<div className="dialogue-group-participants-list">
+								{(story.visual?.characters ?? []).map(character => {
+									const selected = dialogueGroup.participantCharacterIds.includes(
+										character.id
+									);
+									const used = dialogueGroup.usedCharacterIds.includes(character.id);
+
+									return (
+										<button
+											aria-pressed={selected}
+											className={selected ? 'is-active' : ''}
+											disabled={used}
+											key={character.id}
+											onClick={() =>
+												onChangeDialogueParticipants?.(
+													selected
+														? dialogueGroup.participantCharacterIds.filter(
+															id => id !== character.id
+														)
+														: [
+															...dialogueGroup.participantCharacterIds,
+															character.id
+														]
+												)
+											}
+											style={dialogueCharacterStyle(character)}
+											type="button"
+										>
+											<span className="dialogue-character-dot" />
+											{character.name}
+											{used && (
+												<small>{t('dialogs.passageEdit.visual.dialogueCharacterInUse')}</small>
+											)}
+										</button>
+									);
+								})}
+							</div>
+							<button
+								className="dialogue-manage-characters"
+								onClick={() => {
+									setDialogueParticipantsOpen(false);
+									dialogueCharactersContext?.onManage();
+								}}
+								type="button"
+							>
+								{t('dialogs.passageEdit.visual.manageCharacterLibrary')}
+							</button>
+						</div>
+					)}
+				</div>
+			)}
 			{choiceGroup?.start && (
 				<div className="choice-group-heading">
 					<span>{t('dialogs.passageEdit.visual.choiceGroup')}</span>
@@ -3525,12 +3929,37 @@ const BlockShell: React.FC<BlockShellProps> = props => {
 					onClick={() => treeView.onSelectBlock(block.id, container)}
 					type="button"
 				>
-					<span className="block-summary-primary">
-						<Icon />
-						<span className="block-summary-main">
-							<span className="block-kind">{kindLabel}</span>
-							<span className="block-structure-summary">{summary}</span>
-						</span>
+					<span
+						className="block-summary-primary"
+						style={
+							block.kind === 'dialogue'
+								? dialogueCharacterStyle(dialogueCharacter)
+								: undefined
+						}
+					>
+						{block.kind === 'dialogue' ? (
+							<>
+								<span className="dialogue-compact-stripe" />
+								<span className="dialogue-speaker-chip">
+									{dialogueCharacter?.name ??
+										t('dialogs.passageEdit.visual.chooseCharacter')}
+								</span>
+								<span className="block-structure-summary">
+									{shortened(
+										block.text,
+										t('dialogs.passageEdit.visual.summaryEmpty')
+									)}
+								</span>
+							</>
+						) : (
+							<>
+								<Icon />
+								<span className="block-summary-main">
+									<span className="block-kind">{kindLabel}</span>
+									<span className="block-structure-summary">{summary}</span>
+								</span>
+							</>
+						)}
 						{incomplete && (
 							<span className="block-status-tag error-status">
 								{t('dialogs.passageEdit.visual.statusIncomplete')}
@@ -3739,6 +4168,8 @@ const BlockList: React.FC<BlockListProps> = props => {
 		switch (kind) {
 			case 'text':
 				return {id: uuid(), kind, text: ''};
+			case 'dialogue':
+				return {characterId: '', id: uuid(), kind, text: ''};
 			case 'choice':
 				return {actions: [], id: uuid(), kind, label: '', targetPassageId: ''};
 			case 'branch':
@@ -3783,6 +4214,36 @@ const BlockList: React.FC<BlockListProps> = props => {
 			createBlock(kind),
 			...blocks.slice(target)
 		]);
+	}
+
+	function insertDialogueAfter(
+		index: number,
+		characterId: string,
+		currentText?: string,
+		currentStageDirection?: string,
+		participantCharacterIds?: string[]
+	) {
+		const nextId = uuid();
+		const next = blocks.map((block, blockIndex) =>
+			blockIndex === index && block.kind === 'dialogue'
+				? {
+						...block,
+						text: currentText ?? block.text,
+						stageDirection:
+							currentStageDirection ?? block.stageDirection
+					}
+				: block
+		);
+
+		next.splice(index + 1, 0, {
+			characterId,
+			id: nextId,
+			kind: 'dialogue',
+			participantCharacterIds,
+			text: ''
+		});
+		onChange(next);
+		treeView.onSelectBlock(nextId, false);
 	}
 
 	function moveBlockTo(blockId: string, insertionIndex: number) {
@@ -3950,6 +4411,40 @@ const BlockList: React.FC<BlockListProps> = props => {
 							)
 							.filter((item): item is VisualChoiceBlock => item.kind === 'choice')
 					: [];
+				let dialogueRunStart = index;
+				let dialogueRunEnd = index;
+
+				if (block.kind === 'dialogue') {
+					while (blocks[dialogueRunStart - 1]?.kind === 'dialogue') {
+						dialogueRunStart--;
+					}
+
+					while (blocks[dialogueRunEnd + 1]?.kind === 'dialogue') {
+						dialogueRunEnd++;
+					}
+				}
+
+				const dialogueGroupStart =
+					block.kind === 'dialogue' && index === dialogueRunStart;
+				const dialogueGroupEnd =
+					block.kind === 'dialogue' && index === dialogueRunEnd;
+				const dialogueRun =
+					block.kind === 'dialogue'
+						? blocks
+								.slice(dialogueRunStart, dialogueRunEnd + 1)
+								.filter(
+									(item): item is VisualDialogueBlock => item.kind === 'dialogue'
+								)
+						: [];
+				const usedDialogueCharacterIds = Array.from(
+					new Set(dialogueRun.map(item => item.characterId).filter(Boolean))
+				);
+				const dialogueParticipantIds = Array.from(
+					new Set([
+						...dialogueRun.flatMap(item => item.participantCharacterIds ?? []),
+						...usedDialogueCharacterIds
+					])
+				).filter(id => story.visual?.characters?.some(item => item.id === id));
 				const meta = blockKindMeta[block.kind];
 				const condition = 'condition' in block ? block.condition : undefined;
 				const hidden = blockIsHidden(condition, states, simulated);
@@ -3971,6 +4466,25 @@ const BlockList: React.FC<BlockListProps> = props => {
 											(total, item) => total + item.actions.length,
 											0
 										)
+									}
+								: undefined
+						}
+						dialogueCharacter={
+							block.kind === 'dialogue'
+								? story.visual?.characters?.find(
+										item => item.id === block.characterId
+									)
+								: undefined
+						}
+						dialogueGroup={
+							block.kind === 'dialogue'
+								? {
+										start: dialogueGroupStart,
+										end: dialogueGroupEnd,
+										count: dialogueRun.length,
+										characters: dialogueParticipantIds.length,
+										participantCharacterIds: dialogueParticipantIds,
+										usedCharacterIds: usedDialogueCharacterIds
 									}
 								: undefined
 						}
@@ -3998,6 +4512,34 @@ const BlockList: React.FC<BlockListProps> = props => {
 						onAddChoice={
 							choiceGroupStart
 								? () => insertModuleAt(index + choiceRun.length, 'choice')
+								: undefined
+						}
+						onAddDialogue={
+							dialogueGroupStart
+								? () => {
+										const last = dialogueRun[dialogueRun.length - 1];
+										insertDialogueAfter(
+											dialogueRunEnd,
+											last?.characterId ?? '',
+											undefined,
+											undefined,
+											dialogueParticipantIds
+										);
+									}
+								: undefined
+						}
+						onChangeDialogueParticipants={
+							dialogueGroupStart
+								? characterIds =>
+										onChange(
+											blocks.map((item, itemIndex) =>
+												itemIndex >= dialogueRunStart &&
+												itemIndex <= dialogueRunEnd &&
+												item.kind === 'dialogue'
+													? {...item, participantCharacterIds: characterIds}
+													: item
+											)
+										)
 								: undefined
 						}
 						onDelete={() => deleteBlock(index)}
@@ -4039,6 +4581,28 @@ const BlockList: React.FC<BlockListProps> = props => {
 							<TextBlockEditor
 								block={block}
 								disabled={disabled}
+								onSaveFlushed={onSaveFlushed}
+								onSavePending={onSavePending}
+								onUpdate={props =>
+									updateBlock(block.id, {...block, ...props})
+								}
+								states={states}
+							/>
+						)}
+						{block.kind === 'dialogue' && (
+							<DialogueBlockEditor
+								block={block}
+								disabled={disabled}
+								onInsertNext={(characterId, text, stageDirection) =>
+									insertDialogueAfter(
+										index,
+										characterId,
+										text,
+										stageDirection,
+										dialogueParticipantIds
+									)
+								}
+								participantCharacterIds={dialogueParticipantIds}
 								onSaveFlushed={onSaveFlushed}
 								onSavePending={onSavePending}
 								onUpdate={props =>
@@ -4423,6 +4987,7 @@ export function analyzePassageDependencies(
 				rawBlockCount++;
 				break;
 			case 'text':
+			case 'dialogue':
 			case 'interaction':
 			case 'returnMain':
 				break;
@@ -4692,6 +5257,7 @@ export interface PassageVisualEditorProps {
 export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => {
 	const {disabled, passage, story} = props;
 	const {dispatch} = useUndoableStoriesContext();
+	const {dispatch: dialogDispatch} = useDialogsContext();
 	const {t} = useTranslation();
 	const [pendingSaves, setPendingSaves] = React.useState(0);
 	const [showSource, setShowSource] = React.useState(false);
@@ -4713,6 +5279,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 		[passage.visual]
 	);
 	const states = story.visual?.states ?? [];
+	const characters = story.visual?.characters ?? [];
 	const blockAncestors = React.useMemo(
 		() => collectBlockAncestors(content.blocks),
 		[content.blocks]
@@ -4851,6 +5418,14 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 		[updateVisual]
 	);
 
+	const dialogueCharacters = React.useMemo(
+		() => ({
+			characters,
+			onManage: () => dialogDispatch(addStoryCharacters(story.id))
+		}),
+		[characters, dialogDispatch, story.id]
+	);
+
 	const handleSwitchToSource = React.useCallback(() => {
 		if (!window.confirm(t('dialogs.passageEdit.visual.switchToSourceConfirm'))) {
 			return;
@@ -4881,6 +5456,7 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 	);
 
 	return (
+		<DialogueCharactersContext.Provider value={dialogueCharacters}>
 		<div className="passage-visual-editor">
 			<div className="visual-editor-header">
 				<span className="save-indicator">
@@ -4963,5 +5539,6 @@ export const PassageVisualEditor: React.FC<PassageVisualEditorProps> = props => 
 				)}
 			</section>
 		</div>
+		</DialogueCharactersContext.Provider>
 	);
 };

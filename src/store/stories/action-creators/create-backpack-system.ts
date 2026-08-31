@@ -212,7 +212,7 @@ export function createBackpackSystem(
 	const nextStory: Story = {
 		...story,
 		passages,
-		visual: {states, version: 1}
+		visual: {...story.visual, states, version: 1}
 	};
 
 	nextStory.passages = passages.map(passage =>

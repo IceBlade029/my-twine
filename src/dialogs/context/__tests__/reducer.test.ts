@@ -21,6 +21,26 @@ describe('Dialog reducer', () => {
 				}
 			]));
 
+		it('preserves modal presentation and size', () =>
+			expect(
+				reducer([], {
+					type: 'addDialog',
+					component: mockComponent,
+					presentation: 'modal',
+					modalSize: 'wide'
+				})
+			).toEqual([
+				{
+					collapsed: false,
+					component: mockComponent,
+					highlighted: false,
+					maximized: false,
+					presentation: 'modal',
+					modalSize: 'wide',
+					props: undefined
+				}
+			]));
+
 		it('adds a dialog if another component of its kind exists, but has different props', () =>
 			expect(
 				reducer(

@@ -10,6 +10,7 @@ export * from './story-import';
 export * from './story-javascript';
 export * from './story-details';
 export * from './story-search';
+export * from './story-characters';
 export * from './story-states';
 export * from './story-structure';
 export * from './story-stylesheet';

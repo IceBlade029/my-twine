@@ -17,12 +17,14 @@ import {ErrorMessage} from '../../error';
 export interface DialogCardProps {
 	className?: string;
 	collapsed: boolean;
+	collapsible?: boolean;
 	fixedSize?: boolean;
 	headerLabel: string;
 	headerDisplayLabel?: React.ReactNode;
 	highlighted?: boolean;
 	maximizable?: boolean;
 	maximized?: boolean;
+	modal?: boolean;
 	onChangeCollapsed: (value: boolean) => void;
 	onChangeHighlighted: (value: boolean) => void;
 	onChangeMaximized: (value: boolean) => void;
@@ -34,12 +36,14 @@ export const DialogCard: React.FC<DialogCardProps> = props => {
 		children,
 		className,
 		collapsed,
+		collapsible = true,
 		fixedSize,
 		headerDisplayLabel,
 		headerLabel,
 		highlighted,
 		maximizable,
 		maximized,
+		modal,
 		onChangeCollapsed,
 		onChangeHighlighted,
 		onChangeMaximized,
@@ -78,6 +82,7 @@ export const DialogCard: React.FC<DialogCardProps> = props => {
 	return (
 		<div
 			aria-label={headerLabel}
+			aria-modal={modal || undefined}
 			role="dialog"
 			className={calcdClassName}
 			onKeyDown={handleKeyDown}
@@ -99,13 +104,15 @@ export const DialogCard: React.FC<DialogCardProps> = props => {
 								tooltipPosition="bottom"
 							/>
 						)}
-						<IconButton
-							icon={collapsed ? <IconChevronUp /> : <IconChevronDown />}
-							iconOnly
-							label={collapsed ? t('common.expand') : t('common.collapse')}
-							onClick={() => onChangeCollapsed(!collapsed)}
-							tooltipPosition="bottom"
-						/>
+						{collapsible && (
+							<IconButton
+								icon={collapsed ? <IconChevronUp /> : <IconChevronDown />}
+								iconOnly
+								label={collapsed ? t('common.expand') : t('common.collapse')}
+								onClick={() => onChangeCollapsed(!collapsed)}
+								tooltipPosition="bottom"
+							/>
+						)}
 						<IconButton
 							icon={<IconX />}
 							iconOnly

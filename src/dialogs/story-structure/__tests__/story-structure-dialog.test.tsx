@@ -42,11 +42,13 @@ describe('<StoryStructureDialog>', () => {
 		expect(screen.getByText('dialogs.storyStructure.storyInformation')).toBeInTheDocument();
 		expect(screen.getByText('dialogs.storyStructure.globalInterface')).toBeInTheDocument();
 		expect(screen.getByText('dialogs.storyStructure.runtimeAdvanced')).toBeInTheDocument();
+		expect(screen.getByText('dialogs.storyStructure.characterLibrary')).toBeInTheDocument();
 		expect(screen.getByText('StoryDisplayTitle')).toBeInTheDocument();
 		expect(screen.getByText('PassageReady')).toBeInTheDocument();
 		expect(screen.getByText('StoryInterface')).toBeInTheDocument();
 		expect(screen.queryByText('StoryTitle')).not.toBeInTheDocument();
 		expect(container.querySelectorAll('.story-global-card')).toHaveLength(12);
+		expect(container.querySelectorAll('.story-system-card')).toHaveLength(4);
 	});
 
 	it('creates an optional special Passage only when requested', () => {

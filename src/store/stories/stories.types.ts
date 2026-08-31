@@ -88,6 +88,7 @@ export interface VisualPassageContentV2 {
 
 export type VisualBlock =
 	| VisualTextBlock
+	| VisualDialogueBlock
 	| VisualChoiceBlock
 	| VisualInteractionBlock
 	| VisualVariableBlock
@@ -103,6 +104,29 @@ export interface VisualTextBlock {
 	kind: 'text';
 	id: string;
 	text: string;
+	condition?: VisualExpression;
+}
+
+/**
+ * A screenplay-style line spoken by a reusable story character. Character
+ * identity and colour live at story level so renaming or recolouring a
+ * character updates every referenced line.
+ */
+export interface VisualDialogueBlock {
+	kind: 'dialogue';
+	id: string;
+	/** Story-level character id. An empty value means the block is incomplete. */
+	characterId: string;
+	/**
+	 * Characters selected for the surrounding adjacent dialogue run. The value
+	 * is copied across the run so inserting or moving an individual line does
+	 * not silently discard the author's quick-switch roster.
+	 */
+	participantCharacterIds?: string[];
+	/** Dialogue content shown to the player. */
+	text: string;
+	/** Optional author-entered performance direction shown with the line. */
+	stageDirection?: string;
 	condition?: VisualExpression;
 }
 
@@ -252,7 +276,26 @@ export interface VisualStoryState {
 	type: VisualStateType;
 }
 
+export type VisualCharacterColor =
+	| 'blue'
+	| 'coral'
+	| 'teal'
+	| 'purple'
+	| 'amber'
+	| 'green'
+	| 'pink'
+	| 'slate';
+
+/** A lightweight, reusable speaker profile owned by the whole story. */
+export interface VisualCharacter {
+	id: string;
+	name: string;
+	color: VisualCharacterColor;
+}
+
 export interface VisualStoryContentV1 {
+	/** Optional for backward compatibility with stories saved before dialogue. */
+	characters?: VisualCharacter[];
 	states: VisualStoryState[];
 	version: 1;
 }

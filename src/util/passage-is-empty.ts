@@ -7,6 +7,10 @@ function blocksHaveContent(blocks: VisualBlock[]): boolean {
 			return block.text !== '';
 		}
 
+		if (block.kind === 'dialogue') {
+			return block.text !== '';
+		}
+
 		if (block.kind === 'choice') {
 			return block.label !== '';
 		}

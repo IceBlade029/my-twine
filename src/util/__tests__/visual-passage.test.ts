@@ -91,6 +91,96 @@ describe('visual passage utilities', () => {
 		).toBe('');
 	});
 
+	it('compiles color-coded character dialogue with direction and condition', () => {
+		const story = fakeStory(1);
+		const state = {
+			defaultValue: true,
+			id: 'visible',
+			name: 'visible',
+			type: 'boolean' as const
+		};
+
+		story.visual = {
+			characters: [{color: 'blue', id: 'lin', name: '林默'}],
+			states: [state],
+			version: 1
+		};
+		const source = compileVisualPassage(
+			{
+				blocks: [
+					{
+						characterId: 'lin',
+						condition: bin(state.id, '==', true),
+						id: 'dialogue-1',
+						kind: 'dialogue',
+						stageDirection: '压低声音',
+						text: '我们没有多少时间了。'
+					}
+				],
+				version: 2
+			},
+			story,
+			story.passages[0].id
+		);
+
+		expect(source).toContain('<<if ($visible == true)>>');
+		expect(source).toContain('data-character-id="lin"');
+		expect(source).toContain('border-left:3px solid #3978c5');
+		expect(source).toContain('class="nrp-dialogue-line"');
+		expect(source).not.toContain('background:');
+		expect(source).toContain('display:grid');
+		expect(source).toContain('林默');
+		expect(source).toContain('我们没有多少时间了。');
+		expect(source).toContain('（压低声音）');
+	});
+
+	it('does not compile dialogue with a missing character or empty line', () => {
+		const story = fakeStory(1);
+
+		story.visual = {characters: [], states: [], version: 1};
+		expect(
+			compileVisualPassage(
+				{
+					blocks: [
+						{characterId: 'missing', id: 'd1', kind: 'dialogue', text: 'Hello'},
+						{characterId: '', id: 'd2', kind: 'dialogue', text: ''}
+					],
+					version: 2
+				},
+				story,
+				story.passages[0].id
+			)
+		).toBe('');
+	});
+
+	it('joins adjacent dialogue without SugarCube line-break separators', () => {
+		const story = fakeStory(1);
+
+		story.visual = {
+			characters: [{color: 'blue', id: 'lin', name: '林默'}],
+			states: [],
+			version: 1
+		};
+		const source = compileVisualPassage(
+			{
+				blocks: [
+					{characterId: 'lin', id: 'd1', kind: 'dialogue', text: '第一句'},
+					{characterId: 'lin', id: 'd2', kind: 'dialogue', text: '第二句'},
+					{characterId: 'lin', condition: {kind: 'literal', value: true}, id: 'd3', kind: 'dialogue', text: '第三句'},
+					{id: 'text', kind: 'text', text: '叙述'}
+				],
+				version: 2
+			},
+			story,
+			story.passages[0].id
+		);
+
+		expect(source).toContain('</div></div><div class="nrp-dialogue"');
+		expect(source).toContain('</div></div><<if true>><div class="nrp-dialogue"');
+		expect(source).toContain('</div></div><</if>>\n\n叙述');
+		expect(source).not.toContain('__NRP_DIALOGUE_PIECE__');
+	});
+
 	it('detects visual and source passages', () => {
 		expect(
 			passageUsesVisualEditor(

@@ -1,4 +1,5 @@
 import {v4 as uuid} from '@lukeed/uuid';
+import escape from 'lodash/escape';
 import {
 	Passage,
 	Story,
@@ -9,6 +10,7 @@ import {
 	VisualStateAction,
 	VisualStoryState
 } from '../store/stories';
+import {dialogueCharacterTone} from './dialogue';
 
 /**
  * Derives a SugarCube-safe variable name from an author-chosen state name.
@@ -213,7 +215,10 @@ export function compileBlockFragment(
 	passageId?: string,
 	insideLoop = false
 ): string {
-	return compileBlocks([block], states, story, passageId, false, insideLoop).join('\n');
+	return joinCompiledBlocks(
+		compileBlocks([block], states, story, passageId, false, insideLoop),
+		'\n'
+	);
 }
 
 /**
@@ -269,6 +274,26 @@ export function migrateVisualContent(
 	return {version: 2, blocks};
 }
 
+const dialoguePieceMarker = '<!--__NRP_DIALOGUE_PIECE__-->';
+
+/**
+ * SugarCube turns blank source lines into visible <br> elements. Adjacent
+ * dialogue lines therefore join without a source separator, while every other
+ * module boundary keeps the caller's normal separation.
+ */
+function joinCompiledBlocks(pieces: string[], separator: string) {
+	let previousWasDialogue = false;
+
+	return pieces.reduce((result, piece, index) => {
+		const dialogue = piece.startsWith(dialoguePieceMarker);
+		const clean = dialogue ? piece.slice(dialoguePieceMarker.length) : piece;
+		const joiner = index === 0 || (previousWasDialogue && dialogue) ? '' : separator;
+
+		previousWasDialogue = dialogue;
+		return result + joiner + clean;
+	}, '');
+}
+
 function compileBlocks(
 	blocks: VisualBlock[],
 	states: VisualStoryState[],
@@ -314,6 +339,44 @@ function compileBlocks(
 				: undefined;
 
 			output.push(mark(withTraceCondition(text, condition)));
+			return output;
+		}
+
+		if (block.kind === 'dialogue') {
+			const text = block.text.trim();
+			const character = story.visual?.characters?.find(
+				item => item.id === block.characterId
+			);
+
+			if (!text || !character) {
+				return output;
+			}
+
+			const tone = dialogueCharacterTone(character.color);
+			const speaker = escape(character.name);
+			const direction = block.stageDirection?.trim();
+			const directionMarkup = direction
+				? `<div class="nrp-dialogue-direction" style="grid-column:2;color:#68717e;font-size:.88em;margin-top:.05em">（${escape(
+						direction
+					)}）</div>`
+				: '';
+			const code =
+				`<div class="nrp-dialogue" data-character-id="${escape(
+					character.id
+				)}" style="border-left:3px solid ${tone.solid};color:inherit;display:grid;grid-template-columns:minmax(4.5em,max-content) minmax(0,1fr);column-gap:.65em;align-items:baseline;padding:.1em 0 .1em .55em;margin:.06em 0">` +
+				`<div class="nrp-dialogue-speaker" style="color:${
+					tone.solid
+				};font-weight:700">${speaker}</div>` +
+				`<div class="nrp-dialogue-line">${block.text}</div>` +
+				directionMarkup +
+				'</div>';
+			const condition = block.condition
+				? compileExpression(block.condition, states)
+				: undefined;
+
+			output.push(
+				dialoguePieceMarker + mark(withTraceCondition(code, condition))
+			);
 			return output;
 		}
 
@@ -502,26 +565,32 @@ function compileBlocks(
 					caseItem =>
 						`<<case ${sugarCubeValue(
 							caseItem.value
-						)}>>${compileBlocks(
-							caseItem.blocks,
-							states,
-							story,
-							passageId,
-							trace,
-							insideLoop
-						).join('\n')}`
+						)}>>${joinCompiledBlocks(
+							compileBlocks(
+								caseItem.blocks,
+								states,
+								story,
+								passageId,
+								trace,
+								insideLoop
+							),
+							'\n'
+						)}`
 				)
 				.join('');
 			const defaultCode =
 				block.defaultBlocks.length > 0
-					? `<<default>>${compileBlocks(
-							block.defaultBlocks,
-							states,
-							story,
-							passageId,
-							trace,
-							insideLoop
-						).join('\n')}`
+					? `<<default>>${joinCompiledBlocks(
+							compileBlocks(
+								block.defaultBlocks,
+								states,
+								story,
+								passageId,
+								trace,
+								insideLoop
+							),
+							'\n'
+						)}`
 					: '';
 			const code = `<<switch ${visualStateVariable(
 				state
@@ -544,14 +613,17 @@ function compileBlocks(
 
 			const code = `<<for _item range ${visualStateVariable(
 				state
-			)}>>${compileBlocks(
-				block.blocks,
-				states,
-				story,
-				passageId,
-				trace,
-				true
-			).join('\n')}<</for>>`;
+			)}>>${joinCompiledBlocks(
+				compileBlocks(
+					block.blocks,
+					states,
+					story,
+					passageId,
+					trace,
+					true
+				),
+				'\n'
+			)}<</for>>`;
 			const condition = block.condition
 				? compileExpression(block.condition, states)
 				: undefined;
@@ -618,7 +690,8 @@ function compileBlocks(
 				passageId,
 				trace,
 				insideLoop
-			).join('\n');
+			);
+			const compiledCode = joinCompiledBlocks(compiled, '\n');
 			const condition = branchConditions[index];
 
 			const keyword =
@@ -632,7 +705,7 @@ function compileBlocks(
 							: `<<elseif ${condition}>>`
 						: '<<else>>';
 
-			return `${keyword}${compiled}`;
+			return `${keyword}${compiledCode}`;
 		});
 
 		// Branch blocks have no block-level condition (only per-branch ones,
@@ -675,23 +748,18 @@ export function compileVisualPassage(
 		passageId && passageId === initPassage?.id
 			? compileStateInitialization(states)
 			: '';
-	const result: string[] = [];
-
-	if (initialization) {
-		result.push(initialization);
-	}
-
-	result.push(
-		...compileBlocks(
+	const body = joinCompiledBlocks(
+		compileBlocks(
 			contentV2.blocks,
 			states,
 			story,
 			passageId,
 			options?.trace === true
-		)
+		),
+		'\n\n'
 	);
 
-	return result.join('\n\n').trim();
+	return [initialization, body].filter(Boolean).join('\n\n').trim();
 }
 
 export function emptyVisualPassage(): VisualPassageContentV2 {

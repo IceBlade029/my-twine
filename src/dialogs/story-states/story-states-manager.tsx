@@ -334,6 +334,13 @@ function stripStateReferences(
 			};
 		}
 
+		if (block.kind === 'dialogue') {
+			return {
+				...block,
+				condition: stripCondition(block.condition, statesById)
+			};
+		}
+
 		if (block.kind === 'choice') {
 			return {
 				...block,
@@ -462,7 +469,7 @@ export const StoryStatesManager: React.FC<StoryStatesManagerProps> = props => {
 		);
 		const nextStory: Story = {
 			...story,
-			visual: {states: nextStates, version: 1}
+			visual: {...story.visual, states: nextStates, version: 1}
 		};
 
 		const existingStoryInit = story.passages.find(

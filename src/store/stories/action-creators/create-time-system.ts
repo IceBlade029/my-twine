@@ -186,7 +186,7 @@ export function createTimeSystem(
 		...story,
 		passages,
 		script,
-		visual: {states, version: 1}
+		visual: {...story.visual, states, version: 1}
 	};
 
 	// StoryInit now exists, so recompiling visual passages puts the state

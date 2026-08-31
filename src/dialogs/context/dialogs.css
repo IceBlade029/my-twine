@@ -64,3 +64,50 @@ body:has(.dialogs.passage-editor-open) .story-edit-route .main-content {
 	border-radius: 0;
 	height: 100%;
 }
+
+.dialog-modal-layer {
+	align-items: center;
+	background: rgb(0 0 0 / 22%);
+	display: flex;
+	inset: calc(2 * var(--control-height)) 0 0;
+	justify-content: center;
+	padding: calc(var(--grid-size) * 2);
+	pointer-events: auto;
+	position: fixed;
+	z-index: 200;
+}
+
+.dialog-modal-layer.is-covered {
+	pointer-events: none;
+	visibility: hidden;
+}
+
+.dialog-modal-surface {
+	height: min(42rem, calc(100vh - 4 * var(--control-height)));
+	max-height: 100%;
+	min-height: 0;
+	width: min(48rem, calc(100vw - 4 * var(--grid-size)));
+}
+
+.dialog-modal-surface.is-wide {
+	height: min(50rem, calc(100vh - 4 * var(--control-height)));
+	width: min(78rem, calc(100vw - 4 * var(--grid-size)));
+}
+
+.dialog-modal-surface > .dialog-card,
+.dialog-modal-surface > .dialog-card > .card {
+	height: 100%;
+}
+
+@media (max-width: 42rem) {
+	.dialog-modal-layer {
+		align-items: stretch;
+		padding: var(--grid-size);
+	}
+
+	.dialog-modal-surface,
+	.dialog-modal-surface.is-wide {
+		height: 100%;
+		width: 100%;
+	}
+}

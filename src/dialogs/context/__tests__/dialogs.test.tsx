@@ -111,6 +111,55 @@ describe('<Dialogs>', () => {
 		expect(screen.getByTestId('mock-component').dataset.maximized).toBe('true');
 	});
 
+	it('renders modal dialogs in a centered modal layer instead of the passage panel', () => {
+		const {container} = renderComponent({
+			dialogs: [
+				{
+					collapsed: false,
+					component: MockComponent,
+					highlighted: false,
+					maximized: false,
+					presentation: 'modal',
+					modalSize: 'wide',
+					props: {children: 'modal child'}
+				}
+			]
+		});
+
+		expect(container.querySelector('.dialog-modal-layer')).toBeInTheDocument();
+		expect(container.querySelector('.dialog-modal-surface')).toHaveClass('is-wide');
+		expect(container.querySelector('.dialogs')).not.toHaveClass('passage-editor-open');
+	});
+
+	it('covers earlier modal dialogs while keeping them mounted', () => {
+		const {container} = renderComponent({
+			dialogs: [
+				{
+					collapsed: false,
+					component: MockComponent,
+					highlighted: false,
+					maximized: false,
+					presentation: 'modal',
+					props: {children: 'first modal'}
+				},
+				{
+					collapsed: false,
+					component: MockComponent,
+					highlighted: false,
+					maximized: false,
+					presentation: 'modal',
+					props: {children: 'second modal'}
+				}
+			]
+		});
+		const layers = container.querySelectorAll('.dialog-modal-layer');
+
+		expect(layers).toHaveLength(2);
+		expect(layers[0]).toHaveClass('is-covered');
+		expect(layers[0]).toHaveAttribute('aria-hidden', 'true');
+		expect(layers[1]).not.toHaveClass('is-covered');
+	});
+
 	// Using screen.debug() doesn't seem to show the padding-left style. Maybe a
 	// gap in jsdom?
 

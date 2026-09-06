@@ -242,11 +242,12 @@
 }
 
 .block-header {
+	align-items: start;
 	background: color-mix(in srgb, var(--background) 94%, var(--block-accent));
 	border-radius: var(--corner-round);
 	display: grid;
 	gap: calc(var(--grid-size) / 2);
-	grid-template-columns: minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr) auto;
 	min-height: var(--control-height);
 	padding: calc(var(--grid-size) / 3) calc(var(--grid-size) / 2);
 }
@@ -335,10 +336,9 @@
 }
 
 .block-toolbar {
-	border-top: 1px solid color-mix(in srgb, var(--light-gray) 78%, var(--block-accent));
+	align-items: center;
 	display: none;
 	justify-content: flex-end;
-	padding-top: calc(var(--grid-size) / 3);
 }
 
 .block-drag-handle {
